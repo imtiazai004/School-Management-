@@ -39,17 +39,26 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { useState, useEffect } from "react";
+import { useState, useEffect, ReactNode } from "react";
+import React from "react";
+import { Student, FeeRecord } from "./types";
 import { 
   ClassesSmartManagement, 
-  FinancialSuite, 
-  AcademicAnalytics,
-  GuardianEngagementHub,
-  StudentManagementPortal,
+  FinanceManagement, 
+  AcademicAnalytics, 
+  GuardianEngagementHub, 
+  StudentManagementPortal, 
+  TeacherManagementPortal, 
+  ExaminationAssessmentCenter,
   ModulePlaceholder 
-} from "@/components/Modules";
+} from "./components/Modules";
 
-type UserRole = "Headmaster" | "Vice Principal" | "Teacher" | "Clerk" | "Guardian" | "Student";
+type UserRole = "Headmaster" | "Vice Principal" | "Teacher" | "Clerk" | "Accountant" | "Guardian" | "Student";
+
+interface UserData {
+  role: UserRole;
+  email?: string;
+}
 
 const features = [
   {
@@ -60,15 +69,67 @@ const features = [
     description: "AI-driven attendance tracking with real-time guardian synchronization.",
     detailedDescription: "The Classes Smart Management utilizes advanced pattern recognition to track student and staff attendance. It automatically triggers multi-channel alerts (WhatsApp, SMS, App Push) and generates predictive absenteeism reports to help educators intervene early.",
     allowedRoles: ["Headmaster", "Vice Principal", "Teacher"],
+    isAcademic: true,
+  },
+  {
+    icon: Users,
+    title: "Student Management Portal",
+    urduTitle: "طلباء کا انتظام",
+    category: "Core",
+    description: "Manage the entire student journey from admission to withdrawal.",
+    detailedDescription: "A robust portal tailored for education. Track admissions, maintain comprehensive digital portfolios, and manage student lifecycle. Every interaction is logged, providing a 360-degree view of the student's history.",
+    allowedRoles: ["Headmaster", "Vice Principal", "Teacher"],
+    isAcademic: true,
+  },
+  {
+    icon: UserCheck,
+    title: "Teacher Management Portal",
+    urduTitle: "اساتذہ کا انتظام",
+    category: "HR",
+    description: "Comprehensive faculty lifecycle management for school leadership.",
+    detailedDescription: "Empower school leaders with a centralized dashboard to manage the teaching staff. From onboarding new faculty and tracking qualifications to dynamic class allocation and performance monitoring, this portal ensures your human resources are optimized for academic excellence.",
+    allowedRoles: ["Headmaster", "Vice Principal"],
+    isAcademic: true,
+  },
+  {
+    icon: ClipboardCheck,
+    title: "Examination & Assessment Center",
+    urduTitle: "امتحان اور تشخیصی مرکز",
+    category: "Academic",
+    description: "Secure exam scheduling, paper generation, and automated grading.",
+    detailedDescription: "Simplify the examination lifecycle. From generating randomized question papers to managing secure online assessments and automated OMR grading, the center ensures integrity and efficiency in evaluations.",
+    allowedRoles: ["Headmaster", "Vice Principal", "Teacher"],
+    isAcademic: true,
+  },
+  {
+    icon: LayoutDashboard,
+    title: "Finance Overview",
+    urduTitle: "مالیاتی جائزہ",
+    category: "Finance",
+    description: "Real-time financial health dashboard with revenue and expense tracking.",
+    detailedDescription: "Get a high-level view of your institution's financial status. Monitor total revenue, outstanding fees, and operating costs through interactive charts and real-time metrics.",
+    allowedRoles: ["Headmaster", "Vice Principal", "Clerk", "Accountant"],
+    isFinance: true,
   },
   {
     icon: CircleDollarSign,
-    title: "Financial Operations Suite",
-    urduTitle: "مالیاتی آپریشنز سویٹ",
+    title: "Fee Management",
+    urduTitle: "فیس کا انتظام",
     category: "Finance",
-    description: "End-to-end fiscal management from automated billing to audit-ready reporting.",
-    detailedDescription: "A comprehensive financial ecosystem that handles complex fee structures, scholarship distributions, and automated payroll. With integrated payment gateways and real-time ledger updates, it ensures 100% financial transparency and accuracy.",
-    allowedRoles: ["Headmaster", "Vice Principal", "Clerk"],
+    description: "Complete fee lifecycle management from structure setup to collection.",
+    detailedDescription: "Manage every aspect of student fees. Define grade-wise fee structures, record collections with multiple payment methods, and track defaulters with automated reminder systems.",
+    allowedRoles: ["Headmaster", "Teacher", "Accountant"],
+    isFinance: true,
+  },
+  {
+    icon: UserCheck,
+    title: "Salary Management",
+    urduTitle: "تنخواہ کا انتظام",
+    category: "Finance",
+    description: "Automated payroll processing and salary history tracking.",
+    detailedDescription: "Streamline staff payments with a robust salary management system. Define pay scales, manage global deductions, and track monthly and yearly salary expenditures with ease.",
+    allowedRoles: ["Headmaster", "Vice Principal", "Clerk", "Accountant"],
+    isFinance: true,
   },
   {
     icon: BarChart3,
@@ -87,15 +148,6 @@ const features = [
     description: "A centralized portal for seamless school-to-home collaboration.",
     detailedDescription: "Bridge the gap between school and home. The Hub allows parents to monitor their child's academic journey, pay fees, and communicate directly with faculty, fostering a collaborative environment for student success.",
     allowedRoles: ["Headmaster", "Vice Principal", "Guardian"],
-  },
-  {
-    icon: Users,
-    title: "Student Management Portal",
-    urduTitle: "طلباء کا انتظام",
-    category: "Core",
-    description: "Manage the entire student journey from admission to withdrawal.",
-    detailedDescription: "A robust portal tailored for education. Track admissions, maintain comprehensive digital portfolios, and manage student lifecycle. Every interaction is logged, providing a 360-degree view of the student's history.",
-    allowedRoles: ["Headmaster", "Vice Principal", "Teacher"],
   },
   {
     icon: Lightbulb,
@@ -151,15 +203,6 @@ const features = [
     detailedDescription: "Transform your library into a digital hub. Manage physical book circulation with barcode scanning and provide students with access to a curated digital library of e-books and research papers.",
     allowedRoles: ["Headmaster", "Vice Principal", "Teacher", "Student"],
   },
-  {
-    icon: ClipboardCheck,
-    title: "Examination & Assessment Center",
-    urduTitle: "امتحان اور تشخیصی مرکز",
-    category: "Academic",
-    description: "Secure exam scheduling, paper generation, and automated grading.",
-    detailedDescription: "Simplify the examination lifecycle. From generating randomized question papers to managing secure online assessments and automated OMR grading, the center ensures integrity and efficiency in evaluations.",
-    allowedRoles: ["Headmaster", "Vice Principal", "Teacher"],
-  },
 ];
 
 const NavItem = ({ label }: { label: string; key?: string }) => {
@@ -178,16 +221,84 @@ const NavItem = ({ label }: { label: string; key?: string }) => {
   );
 };
 
+const HeaderTooltip = ({ text, children }: { text: string; children: ReactNode }) => {
+  const [show, setShow] = useState(false);
+  return (
+    <div className="relative" onMouseEnter={() => setShow(true)} onMouseLeave={() => setShow(false)}>
+      {children}
+      <AnimatePresence>
+        {show && (
+          <motion.div
+            initial={{ opacity: 0, y: 5, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 5, scale: 0.95 }}
+            className="absolute top-full left-1/2 -translate-x-1/2 mt-2 px-3 py-1.5 bg-slate-900 text-white text-[10px] font-black rounded-lg whitespace-nowrap z-[60] shadow-xl pointer-events-none"
+          >
+            {text}
+            <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-slate-900 rotate-45" />
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
 export default function App() {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authType, setAuthType] = useState<"login" | "signup">("login");
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userRole, setUserRole] = useState<UserRole>("Headmaster");
+  const [userEmail, setUserEmail] = useState<string>("");
   const [activeModule, setActiveModule] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isAcademicsExpanded, setIsAcademicsExpanded] = useState(true);
+  const [isFinanceExpanded, setIsFinanceExpanded] = useState(true);
   const [pendingModule, setPendingModule] = useState<string | null>(null);
 
+  // Header States
+  const [globalSearch, setGlobalSearch] = useState("");
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
+  
+  // User Settings Modal States
+  const [isUserSettingsOpen, setIsUserSettingsOpen] = useState(false);
+  const [userSettingsTab, setUserSettingsTab] = useState<"profile" | "security">("profile");
+  const [editEmail, setEditEmail] = useState("");
+  const [editRole, setEditRole] = useState<UserRole>("Headmaster");
+  
+  // App Settings States
+  const [appLanguage, setAppLanguage] = useState("English");
+  const [appPerformance, setAppPerformance] = useState("High");
+  const [appSecurity, setAppSecurity] = useState("AES-256");
+  const [toast, setToast] = useState<{ message: string; type: "success" | "info" } | null>(null);
+
+  // Global Data States
+  const [students, setStudents] = useState<Student[]>([
+    { id: 1, rollNo: "10A-001", name: "Ahmad Hassan", fatherName: "Hassan Ali", grade: "Grade 10-A", dob: "2010-05-15", gender: "Male", contact: "0300-1234567", address: "House 123, Street 4, Lahore", status: "Active", admissionDate: "2022-04-01", examResults: { math: 85, science: 92, english: 78 }, attendanceStatus: "present", attendanceTime: "08:15 AM" },
+    { id: 2, rollNo: "10A-002", name: "Sara Khan", fatherName: "Imran Khan", grade: "Grade 10-A", dob: "2010-08-22", gender: "Female", contact: "0321-7654321", address: "Flat 45, Model Town, Lahore", status: "Active", admissionDate: "2022-04-01", examResults: { math: 72, science: 68, english: 85 }, attendanceStatus: "absent", attendanceTime: "-" },
+    { id: 3, rollNo: "10A-003", name: "Zainab Ali", fatherName: "Ali Raza", grade: "Grade 10-A", dob: "2011-01-10", gender: "Female", contact: "0333-9876543", address: "Sector C, DHA, Lahore", status: "Active", admissionDate: "2022-04-01", examResults: { math: 95, science: 88, english: 92 }, attendanceStatus: "present", attendanceTime: "08:20 AM" },
+    { id: 4, rollNo: "10A-004", name: "Bilal Ahmed", fatherName: "Ahmed Shah", grade: "Grade 10-A", dob: "2010-11-30", gender: "Male", contact: "0345-1122334", address: "Johar Town, Lahore", status: "Active", admissionDate: "2022-04-01", examResults: { math: 65, science: 70, english: 60 }, attendanceStatus: "late", attendanceTime: "08:45 AM" },
+    { id: 5, rollNo: "10A-005", name: "Fatima Noor", fatherName: "Noor Muhammad", grade: "Grade 10-A", dob: "2011-03-05", gender: "Female", contact: "0300-5566778", address: "Gulberg III, Lahore", status: "Active", admissionDate: "2022-04-01", examResults: { math: 88, science: 85, english: 80 }, attendanceStatus: "present", attendanceTime: "08:10 AM" },
+    { id: 6, rollNo: "10B-001", name: "John Doe", fatherName: "Richard Doe", grade: "Grade 10-B", dob: "2010-02-14", gender: "Male", contact: "0312-9988776", address: "Wapda Town, Lahore", status: "Active", admissionDate: "2022-04-01", examResults: { math: 80, science: 75, english: 70 }, attendanceStatus: "present", attendanceTime: "08:05 AM" },
+  ]);
+
+  const [fees, setFees] = useState<FeeRecord[]>([
+    { id: 1, student: "Ahmad Hassan", rollNo: "10A-001", grade: "Grade 10-A", amount: 15000, date: "2023-10-12", status: "Paid", method: "Bank Transfer" },
+    { id: 2, student: "Sara Khan", rollNo: "10A-002", grade: "Grade 10-A", amount: 15000, date: "2023-10-11", status: "Paid", method: "Cash" },
+    { id: 3, student: "Zainab Ali", rollNo: "10A-003", grade: "Grade 10-A", amount: 15000, date: "-", status: "Unpaid", method: "-" },
+  ]);
+
+  const [notifications] = useState([
+    { id: 1, title: "New Admission", message: "Zaid Khan registered for Grade 10-A", time: "2m ago", read: false },
+    { id: 2, title: "Security Alert", message: "OTP requested for promotion", time: "15m ago", read: true },
+    { id: 3, title: "Fee Payment", message: "Sara Khan's fee processed", time: "1h ago", read: true },
+  ]);
+
   const allowedFeatures = features.filter(f => f.allowedRoles.includes(userRole));
+  const academicFeatures = allowedFeatures.filter(f => (f as any).isAcademic);
+  const financeFeatures = allowedFeatures.filter(f => (f as any).isFinance);
+  const otherFeatures = allowedFeatures.filter(f => !(f as any).isAcademic && !(f as any).isFinance);
 
   const openAuth = (type: "login" | "signup", moduleTitle?: string) => {
     setAuthType(type);
@@ -195,8 +306,9 @@ export default function App() {
     if (moduleTitle) setPendingModule(moduleTitle);
   };
 
-  const handleLogin = (role: UserRole) => {
+  const handleLogin = (role: UserRole, email?: string) => {
     setUserRole(role);
+    if (email) setUserEmail(email);
     setIsLoggedIn(true);
     setIsAuthModalOpen(false);
     
@@ -214,15 +326,23 @@ export default function App() {
   const renderModule = () => {
     switch (activeModule) {
       case "Classes Smart Management":
-        return <ClassesSmartManagement userRole={userRole} />;
-      case "Financial Operations Suite":
-        return <FinancialSuite userRole={userRole} />;
+        return <ClassesSmartManagement userRole={userRole} students={students} setStudents={setStudents} />;
+      case "Finance Overview":
+        return <FinanceManagement userRole={userRole} initialTab="overview" students={students} fees={fees} setFees={setFees} />;
+      case "Fee Management":
+        return <FinanceManagement userRole={userRole} initialTab="fees" students={students} fees={fees} setFees={setFees} />;
+      case "Salary Management":
+        return <FinanceManagement userRole={userRole} initialTab="salaries" students={students} fees={fees} setFees={setFees} />;
       case "Academic Performance Analytics":
-        return <AcademicAnalytics userRole={userRole} />;
+        return <AcademicAnalytics userRole={userRole} students={students} />;
       case "Guardian Engagement Hub":
         return <GuardianEngagementHub userRole={userRole} />;
       case "Student Management Portal":
-        return <StudentManagementPortal userRole={userRole} />;
+        return <StudentManagementPortal userRole={userRole} userEmail={userEmail} students={students} setStudents={setStudents} />;
+      case "Teacher Management Portal":
+        return <TeacherManagementPortal userRole={userRole} />;
+      case "Examination & Assessment Center":
+        return <ExaminationAssessmentCenter userRole={userRole} students={students} setStudents={setStudents} />;
       default:
         return <ModulePlaceholder title={activeModule || "Module"} />;
     }
@@ -242,7 +362,7 @@ export default function App() {
               <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-200">
                 <Zap className="text-white w-6 h-6" />
               </div>
-              <span className="text-xl font-black tracking-tighter text-slate-900">PakEducate</span>
+              <span className="text-xl font-black tracking-tighter text-slate-900">Smart Education</span>
             </div>
             <button 
               onClick={() => setIsSidebarOpen(!isSidebarOpen)}
@@ -253,7 +373,104 @@ export default function App() {
           </div>
 
           <div className="flex-1 px-4 py-6 space-y-2 overflow-y-auto">
-            {allowedFeatures.map((feature) => (
+            {/* Academics Group */}
+            {academicFeatures.length > 0 && (
+              <div className="space-y-1">
+                <button
+                  onClick={() => setIsAcademicsExpanded(!isAcademicsExpanded)}
+                  className={`w-full flex items-center justify-between p-3 rounded-xl font-black transition-all ${
+                    academicFeatures.some(f => f.title === activeModule)
+                      ? "bg-indigo-50/50 text-indigo-600"
+                      : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <BookOpen className={`w-5 h-5 ${academicFeatures.some(f => f.title === activeModule) ? "text-indigo-600" : "text-slate-400"}`} />
+                    {isSidebarOpen && <span className="text-sm uppercase tracking-wider">Academics</span>}
+                  </div>
+                  {isSidebarOpen && (
+                    <ChevronDown className={`w-4 h-4 transition-transform duration-300 ${isAcademicsExpanded ? "rotate-180" : ""}`} />
+                  )}
+                </button>
+                
+                <AnimatePresence initial={false}>
+                  {isAcademicsExpanded && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      className="overflow-hidden pl-4 space-y-1"
+                    >
+                      {academicFeatures.map((feature) => (
+                        <button
+                          key={feature.title}
+                          onClick={() => setActiveModule(feature.title)}
+                          className={`w-full flex items-center gap-3 p-3 rounded-xl font-bold transition-all ${
+                            activeModule === feature.title 
+                              ? "bg-indigo-600 text-white shadow-lg shadow-indigo-100" 
+                              : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+                          }`}
+                        >
+                          <feature.icon className={`w-4 h-4 ${activeModule === feature.title ? "text-white" : "text-slate-400"}`} />
+                          {isSidebarOpen && <span className="text-xs truncate">{feature.title}</span>}
+                        </button>
+                      ))}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            )}
+
+            {/* Finance Group */}
+            {financeFeatures.length > 0 && (
+              <div className="space-y-1">
+                <button
+                  onClick={() => setIsFinanceExpanded(!isFinanceExpanded)}
+                  className={`w-full flex items-center justify-between p-3 rounded-xl font-black transition-all ${
+                    financeFeatures.some(f => f.title === activeModule)
+                      ? "bg-indigo-50/50 text-indigo-600"
+                      : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <CircleDollarSign className={`w-5 h-5 ${financeFeatures.some(f => f.title === activeModule) ? "text-indigo-600" : "text-slate-400"}`} />
+                    {isSidebarOpen && <span className="text-sm uppercase tracking-wider">Finance Management</span>}
+                  </div>
+                  {isSidebarOpen && (
+                    <ChevronDown className={`w-4 h-4 transition-transform duration-300 ${isFinanceExpanded ? "rotate-180" : ""}`} />
+                  )}
+                </button>
+                
+                <AnimatePresence initial={false}>
+                  {isFinanceExpanded && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      className="overflow-hidden pl-4 space-y-1"
+                    >
+                      {financeFeatures.map((feature) => (
+                        <button
+                          key={feature.title}
+                          onClick={() => setActiveModule(feature.title)}
+                          className={`w-full flex items-center gap-3 p-3 rounded-xl font-bold transition-all ${
+                            activeModule === feature.title 
+                              ? "bg-indigo-600 text-white shadow-lg shadow-indigo-100" 
+                              : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+                          }`}
+                        >
+                          <feature.icon className={`w-4 h-4 ${activeModule === feature.title ? "text-white" : "text-slate-400"}`} />
+                          {isSidebarOpen && <span className="text-xs truncate">{feature.title}</span>}
+                        </button>
+                      ))}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            )}
+
+            {/* Other Features */}
+            {otherFeatures.map((feature) => (
               <button
                 key={feature.title}
                 onClick={() => setActiveModule(feature.title)}
@@ -288,28 +505,240 @@ export default function App() {
               <Badge variant="outline" className="rounded-full bg-indigo-50 text-indigo-600 border-indigo-100">{userRole} Portal</Badge>
             </div>
             <div className="flex items-center gap-4">
+              {/* Universal Search */}
               <div className="relative hidden md:block">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                <input 
-                  type="text" 
-                  placeholder="Universal Search..." 
-                  className="h-10 pl-10 pr-4 rounded-xl bg-slate-50 border border-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 w-64 text-sm font-medium"
-                />
+                <HeaderTooltip text="Universal Search">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <input 
+                      type="text" 
+                      value={globalSearch}
+                      onChange={(e) => setGlobalSearch(e.target.value)}
+                      placeholder="Universal Search..." 
+                      className="h-10 pl-10 pr-4 rounded-xl bg-slate-50 border border-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 w-64 text-sm font-medium"
+                    />
+                  </div>
+                </HeaderTooltip>
+                {globalSearch && (
+                  <div className="absolute top-full left-0 w-full mt-2 bg-white rounded-2xl border border-slate-200 shadow-2xl p-2 z-50 animate-in fade-in slide-in-from-top-2">
+                    {allowedFeatures.filter(f => f.title.toLowerCase().includes(globalSearch.toLowerCase())).length > 0 ? (
+                      allowedFeatures
+                        .filter(f => f.title.toLowerCase().includes(globalSearch.toLowerCase()))
+                        .map(f => (
+                          <button 
+                            key={f.title}
+                            onClick={() => {
+                              setActiveModule(f.title);
+                              setGlobalSearch("");
+                            }}
+                            className="w-full flex items-center gap-3 p-3 hover:bg-slate-50 rounded-xl transition-all"
+                          >
+                            <f.icon className="w-4 h-4 text-indigo-600" />
+                            <span className="text-sm font-bold text-slate-700">{f.title}</span>
+                          </button>
+                        ))
+                    ) : (
+                      <p className="p-4 text-xs font-bold text-slate-400 text-center">No modules found</p>
+                    )}
+                  </div>
+                )}
               </div>
-              <button className="p-2 hover:bg-slate-100 rounded-lg text-slate-400 relative">
-                <Bell className="w-5 h-5" />
-                <span className="absolute top-2 right-2 w-2 h-2 bg-rose-500 rounded-full border-2 border-white" />
-              </button>
-              <button className="p-2 hover:bg-slate-100 rounded-lg text-slate-400">
-                <Settings className="w-5 h-5" />
-              </button>
-              <div className="w-10 h-10 rounded-full bg-slate-200 border-2 border-white shadow-sm overflow-hidden">
-                <img src="https://picsum.photos/seed/admin/100/100" alt="Admin" referrerPolicy="no-referrer" />
+
+              {/* Notifications */}
+              <div className="relative">
+                <HeaderTooltip text="Notifications">
+                  <button 
+                    onClick={() => {
+                      setShowNotifications(!showNotifications);
+                      setShowSettings(false);
+                      setShowProfile(false);
+                    }}
+                    className={`p-2 hover:bg-slate-100 rounded-lg transition-all relative ${showNotifications ? "bg-slate-100 text-indigo-600" : "text-slate-400"}`}
+                  >
+                    <Bell className="w-5 h-5" />
+                    <span className="absolute top-2 right-2 w-2 h-2 bg-rose-500 rounded-full border-2 border-white" />
+                  </button>
+                </HeaderTooltip>
+                {showNotifications && (
+                  <div className="absolute top-full right-0 w-80 mt-2 bg-white rounded-[2rem] border border-slate-200 shadow-2xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2">
+                    <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+                      <h4 className="font-black text-slate-900">Notifications</h4>
+                      <Badge className="bg-indigo-50 text-indigo-600 border-indigo-100">3 New</Badge>
+                    </div>
+                    <div className="max-h-96 overflow-y-auto">
+                      {notifications.map(n => (
+                        <div key={n.id} className="p-4 hover:bg-slate-50 border-b border-slate-50 transition-all cursor-pointer group">
+                          <div className="flex justify-between items-start mb-1">
+                            <p className="text-sm font-black text-slate-900 group-hover:text-indigo-600 transition-colors">{n.title}</p>
+                            <span className="text-[10px] font-bold text-slate-400">{n.time}</span>
+                          </div>
+                          <p className="text-xs text-slate-500 font-medium leading-relaxed">{n.message}</p>
+                        </div>
+                      ))}
+                    </div>
+                    <button className="w-full p-4 text-xs font-black text-indigo-600 hover:bg-indigo-50 transition-all">View All Activity</button>
+                  </div>
+                )}
+              </div>
+
+              {/* Settings */}
+              <div className="relative">
+                <HeaderTooltip text="Quick Settings">
+                  <button 
+                    onClick={() => {
+                      setShowSettings(!showSettings);
+                      setShowNotifications(false);
+                      setShowProfile(false);
+                    }}
+                    className={`p-2 hover:bg-slate-100 rounded-lg transition-all ${showSettings ? "bg-slate-100 text-indigo-600" : "text-slate-400"}`}
+                  >
+                    <Settings className="w-5 h-5" />
+                  </button>
+                </HeaderTooltip>
+                {showSettings && (
+                  <div className="absolute top-full right-0 w-64 mt-2 bg-white rounded-[2rem] border border-slate-200 shadow-2xl z-50 p-2 animate-in fade-in slide-in-from-top-2">
+                    <div className="p-4 border-b border-slate-100 mb-2">
+                      <p className="text-xs font-black text-slate-400 uppercase tracking-widest">Quick Settings</p>
+                    </div>
+                    {[
+                      { 
+                        icon: Globe, 
+                        label: "Language", 
+                        value: appLanguage,
+                        options: ["English", "Urdu", "Arabic"],
+                        setter: setAppLanguage 
+                      },
+                      { 
+                        icon: Zap, 
+                        label: "Performance", 
+                        value: appPerformance,
+                        options: ["High", "Balanced", "Eco"],
+                        setter: setAppPerformance 
+                      },
+                      { 
+                        icon: ShieldCheck, 
+                        label: "Security", 
+                        value: appSecurity,
+                        options: ["AES-256", "RSA-4096", "Quantum"],
+                        setter: setAppSecurity 
+                      },
+                    ].map(item => (
+                      <div key={item.label} className="space-y-1">
+                        <div className="flex items-center justify-between p-3 rounded-xl">
+                          <div className="flex items-center gap-3">
+                            <item.icon className="w-4 h-4 text-slate-400" />
+                            <span className="text-sm font-bold text-slate-700">{item.label}</span>
+                          </div>
+                        </div>
+                        <div className="flex gap-1 px-2 pb-2">
+                          {item.options.map(opt => (
+                            <button
+                              key={opt}
+                              onClick={() => {
+                                item.setter(opt);
+                                setToast({ message: `${item.label} updated to ${opt}`, type: "success" });
+                                setTimeout(() => setToast(null), 3000);
+                              }}
+                              className={`flex-1 py-1.5 rounded-lg text-[10px] font-black transition-all ${
+                                item.value === opt 
+                                  ? "bg-indigo-600 text-white shadow-md shadow-indigo-100" 
+                                  : "bg-slate-50 text-slate-400 hover:bg-slate-100"
+                              }`}
+                            >
+                              {opt}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Profile */}
+              <div className="relative">
+                <HeaderTooltip text="User Profile">
+                  <button 
+                    onClick={() => {
+                      setShowProfile(!showProfile);
+                      setShowNotifications(false);
+                      setShowSettings(false);
+                    }}
+                    className="w-10 h-10 rounded-full bg-slate-200 border-2 border-white shadow-sm overflow-hidden hover:ring-2 hover:ring-indigo-500 transition-all"
+                  >
+                    <img src={`https://picsum.photos/seed/${userRole}/100/100`} alt="User" referrerPolicy="no-referrer" />
+                  </button>
+                </HeaderTooltip>
+                {showProfile && (
+                  <div className="absolute top-full right-0 w-72 mt-2 bg-white rounded-[2rem] border border-slate-200 shadow-2xl z-50 p-6 animate-in fade-in slide-in-from-top-2">
+                    <div className="flex items-center gap-4 mb-6">
+                      <div className="w-12 h-12 rounded-2xl bg-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-200">
+                        <User className="text-white w-6 h-6" />
+                      </div>
+                      <div>
+                        <p className="font-black text-slate-900 truncate max-w-[160px]">{userEmail || "Administrator"}</p>
+                        <p className="text-xs font-bold text-indigo-600">{userRole}</p>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <button 
+                        onClick={() => {
+                          setEditEmail(userEmail);
+                          setEditRole(userRole);
+                          setUserSettingsTab("profile");
+                          setIsUserSettingsOpen(true);
+                          setShowProfile(false);
+                        }}
+                        className="w-full flex items-center gap-3 p-3 hover:bg-slate-50 rounded-xl transition-all text-slate-600 font-bold text-sm"
+                      >
+                        <UserRound className="w-4 h-4" /> My Profile
+                      </button>
+                      <button 
+                        onClick={() => {
+                          setEditEmail(userEmail);
+                          setEditRole(userRole);
+                          setUserSettingsTab("security");
+                          setIsUserSettingsOpen(true);
+                          setShowProfile(false);
+                        }}
+                        className="w-full flex items-center gap-3 p-3 hover:bg-slate-50 rounded-xl transition-all text-slate-600 font-bold text-sm"
+                      >
+                        <ShieldCheck className="w-4 h-4" /> Security
+                      </button>
+                      <Separator className="my-2" />
+                      <button 
+                        onClick={handleLogout}
+                        className="w-full flex items-center gap-3 p-3 hover:bg-rose-50 rounded-xl transition-all text-rose-500 font-bold text-sm"
+                      >
+                        <LogOut className="w-4 h-4" /> Sign Out
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </header>
 
           <div className="p-8 flex-1">
+            {/* Global Toast Notification */}
+            <AnimatePresence>
+              {toast && (
+                <motion.div
+                  initial={{ opacity: 0, y: -20, x: "-50%" }}
+                  animate={{ opacity: 1, y: 0, x: "-50%" }}
+                  exit={{ opacity: 0, y: -20, x: "-50%" }}
+                  className="fixed top-24 left-1/2 z-50"
+                >
+                  <div className={`px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3 font-black text-sm ${
+                    toast.type === "success" ? "bg-emerald-600 text-white shadow-emerald-100" : "bg-indigo-600 text-white shadow-indigo-100"
+                  }`}>
+                    <CheckCircle2 className="w-5 h-5" />
+                    {toast.message}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
             <AnimatePresence mode="wait">
               <motion.div
                 key={activeModule}
@@ -322,6 +751,148 @@ export default function App() {
               </motion.div>
             </AnimatePresence>
           </div>
+
+          {/* User Settings Modal */}
+          <Dialog open={isUserSettingsOpen} onOpenChange={setIsUserSettingsOpen}>
+            <DialogContent className="max-w-2xl p-0 overflow-hidden rounded-[2.5rem] border-none shadow-2xl">
+              <div className="flex h-[500px]">
+                {/* Modal Sidebar */}
+                <div className="w-48 bg-slate-50 border-r border-slate-100 p-6 flex flex-col gap-2">
+                  <div className="mb-8">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Account</p>
+                    <button 
+                      onClick={() => setUserSettingsTab("profile")}
+                      className={`w-full flex items-center gap-3 p-3 rounded-xl font-bold text-sm transition-all ${
+                        userSettingsTab === "profile" ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-900"
+                      }`}
+                    >
+                      <User className="w-4 h-4" /> Profile
+                    </button>
+                    <button 
+                      onClick={() => setUserSettingsTab("security")}
+                      className={`w-full flex items-center gap-3 p-3 rounded-xl font-bold text-sm transition-all ${
+                        userSettingsTab === "security" ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-900"
+                      }`}
+                    >
+                      <Lock className="w-4 h-4" /> Security
+                    </button>
+                  </div>
+                </div>
+
+                {/* Modal Content */}
+                <div className="flex-1 bg-white p-10 overflow-y-auto">
+                  {userSettingsTab === "profile" ? (
+                    <div className="space-y-8">
+                      <div>
+                        <h2 className="text-3xl font-black text-slate-900 mb-2">My Profile</h2>
+                        <p className="text-slate-500 font-medium">Manage your public identity and personal information.</p>
+                      </div>
+
+                      <div className="flex items-center gap-6 p-6 bg-slate-50 rounded-3xl border border-slate-100">
+                        <div className="w-20 h-20 rounded-[1.5rem] bg-indigo-600 flex items-center justify-center shadow-xl shadow-indigo-100">
+                          <User className="text-white w-10 h-10" />
+                        </div>
+                        <div>
+                          <p className="text-xl font-black text-slate-900">{userEmail || "Administrator"}</p>
+                          <p className="text-sm font-bold text-indigo-600">{userRole}</p>
+                        </div>
+                      </div>
+
+                      <div className="space-y-4">
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <label className="text-xs font-black text-slate-400 uppercase tracking-widest">Full Name</label>
+                            <input 
+                              type="text" 
+                              defaultValue={userEmail.split('@')[0].replace('.', ' ')}
+                              className="w-full h-12 px-4 rounded-xl bg-slate-50 border border-slate-100 font-bold text-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <label className="text-xs font-black text-slate-400 uppercase tracking-widest">Employee ID</label>
+                            <input 
+                              type="text" 
+                              defaultValue="PE-2026-001"
+                              readOnly
+                              className="w-full h-12 px-4 rounded-xl bg-slate-100 border border-slate-200 font-bold text-slate-400 outline-none cursor-not-allowed"
+                            />
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-xs font-black text-slate-400 uppercase tracking-widest">Department</label>
+                          <input 
+                            type="text" 
+                            defaultValue="Administration"
+                            className="w-full h-12 px-4 rounded-xl bg-slate-50 border border-slate-100 font-bold text-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-8">
+                      <div>
+                        <h2 className="text-3xl font-black text-slate-900 mb-2">Security & Access</h2>
+                        <p className="text-slate-500 font-medium">Update login credentials for the current administrative role.</p>
+                      </div>
+
+                      <div className="p-6 bg-rose-50 rounded-3xl border border-rose-100 flex items-start gap-4">
+                        <div className="w-10 h-10 bg-rose-100 rounded-xl flex items-center justify-center shrink-0">
+                          <ShieldCheck className="text-rose-600 w-6 h-6" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-black text-rose-900 mb-1">Critical Action</p>
+                          <p className="text-xs text-rose-700 font-medium leading-relaxed">
+                            Changing these details will update the global access for the <strong>{userRole}</strong> role. Use this when handing over duties to a new person.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="space-y-6">
+                        <div className="space-y-2">
+                          <label className="text-xs font-black text-slate-400 uppercase tracking-widest">Administrative Email</label>
+                          <input 
+                            type="email" 
+                            value={editEmail}
+                            onChange={(e) => setEditEmail(e.target.value)}
+                            className="w-full h-14 px-4 rounded-2xl bg-slate-50 border border-slate-100 font-bold text-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-xs font-black text-slate-400 uppercase tracking-widest">Assigned Role</label>
+                          <select 
+                            value={editRole}
+                            onChange={(e) => setEditRole(e.target.value as UserRole)}
+                            className="w-full h-14 px-4 rounded-2xl bg-slate-50 border border-slate-100 font-bold text-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none appearance-none"
+                          >
+                            <option value="Headmaster">Headmaster</option>
+                            <option value="Vice Principal">Vice Principal</option>
+                            <option value="Teacher">Teacher</option>
+                            <option value="Clerk">Clerk</option>
+                          </select>
+                        </div>
+
+                        <div className="pt-4">
+                          <Button 
+                            onClick={() => {
+                              setUserEmail(editEmail);
+                              setUserRole(editRole);
+                              setIsUserSettingsOpen(false);
+                              setToast({ message: "Administrative credentials updated successfully", type: "success" });
+                              setTimeout(() => setToast(null), 3000);
+                            }}
+                            className="w-full h-14 rounded-2xl bg-indigo-600 hover:bg-indigo-700 font-black text-lg shadow-xl shadow-indigo-100"
+                          >
+                            Update Credentials
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
         </main>
       </div>
     );
@@ -341,7 +912,7 @@ export default function App() {
               <Zap className="text-white w-7 h-7" />
             </div>
             <div className="flex flex-col">
-              <span className="text-2xl font-black tracking-tighter text-slate-900 leading-none">PakEducate <span className="text-indigo-600">Pro</span></span>
+              <span className="text-2xl font-black tracking-tighter text-slate-900 leading-none">Smart Education <span className="text-indigo-600">Pro</span></span>
               <span className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Enterprise OS</span>
             </div>
           </motion.div>
@@ -608,22 +1179,23 @@ export default function App() {
   );
 }
 
-const AuthForm = ({ type, onLogin, onSwitch }: { type: "login" | "signup", onLogin: (role: UserRole) => void, onSwitch: () => void }) => {
+const AuthForm = ({ type, onLogin, onSwitch }: { type: "login" | "signup", onLogin: (role: UserRole, email?: string) => void, onSwitch: () => void }) => {
   const [selectedRole, setSelectedRole] = useState<UserRole>("Headmaster");
   const [identifier, setIdentifier] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
-  const roles: UserRole[] = ["Headmaster", "Vice Principal", "Teacher", "Clerk", "Guardian", "Student"];
+  const roles: UserRole[] = ["Headmaster", "Vice Principal", "Teacher", "Clerk", "Accountant", "Guardian", "Student"];
 
   const getPlaceholder = () => {
     if (selectedRole === "Student") return "Class ID (e.g. 10-A-001)";
-    if (["Headmaster", "Vice Principal", "Teacher", "Clerk"].includes(selectedRole)) return "CNIC (e.g. 35202-xxxxxxx-x)";
-    return "Email or Phone Number";
+    if (["Headmaster", "Vice Principal", "Teacher", "Clerk", "Accountant"].includes(selectedRole)) return "CNIC (e.g. 35202-xxxxxxx-x)";
+    return "Phone Number";
   };
 
   const getPasswordPlaceholder = () => {
     if (selectedRole === "Student") return "Class ID as Password";
-    if (["Headmaster", "Vice Principal", "Teacher", "Clerk"].includes(selectedRole)) return "CNIC as Password";
+    if (["Headmaster", "Vice Principal", "Teacher", "Clerk", "Accountant"].includes(selectedRole)) return "CNIC as Password";
     return "Password";
   };
 
@@ -666,6 +1238,18 @@ const AuthForm = ({ type, onLogin, onSwitch }: { type: "login" | "signup", onLog
               className="w-full h-14 px-6 rounded-2xl bg-slate-50 border border-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-bold" 
             />
           </div>
+          {type === "signup" && (
+            <div className="space-y-2">
+              <label className="text-xs font-black uppercase tracking-widest text-slate-400">Official Email</label>
+              <input 
+                type="email" 
+                placeholder="official@school.edu" 
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full h-14 px-6 rounded-2xl bg-slate-50 border border-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-bold" 
+              />
+            </div>
+          )}
           <div className="space-y-2">
             <label className="text-xs font-black uppercase tracking-widest text-slate-400">Password</label>
             <input 
@@ -678,7 +1262,7 @@ const AuthForm = ({ type, onLogin, onSwitch }: { type: "login" | "signup", onLog
           </div>
         </div>
         <Button 
-          onClick={() => onLogin(selectedRole)}
+          onClick={() => onLogin(selectedRole, email)}
           className="w-full h-14 rounded-2xl bg-indigo-600 hover:bg-indigo-700 font-black text-lg shadow-xl shadow-indigo-100 flex items-center justify-center gap-3"
         >
           <UserCheck className="w-5 h-5" />
