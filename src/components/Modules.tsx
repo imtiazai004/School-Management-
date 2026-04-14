@@ -47,7 +47,17 @@ import {
   Settings,
   Bell,
   LayoutDashboard,
-  UserCheck
+  UserCheck,
+  TrendingUp,
+  Target,
+  AlertCircle,
+  Share2,
+  BookOpen,
+  UserCircle,
+  MessageSquare,
+  Building,
+  Paperclip,
+  Send
 } from "lucide-react";
 import { GoogleGenAI, Type } from "@google/genai";
 import { 
@@ -61,7 +71,12 @@ import {
   LineChart,
   Line,
   AreaChart,
-  Area
+  Area,
+  Radar,
+  RadarChart,
+  PolarGrid,
+  PolarAngleAxis,
+  PolarRadiusAxis
 } from "recharts";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -74,7 +89,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
-import { Student, FeeRecord, Teacher } from "../types";
+import { Student, FeeRecord, Teacher, Expense } from "../types";
 import { db, handleFirestoreError, OperationType } from "../lib/firebase";
 import { 
   collection, 
@@ -894,27 +909,38 @@ export const ClassesSmartManagement = ({
 // --- Finance Management ---
 export const FinanceManagement = ({ 
   userRole, 
+  userProfile,
   initialTab = "overview",
   students,
-  fees
+  fees,
+  expenses
 }: { 
   userRole?: string; 
-  initialTab?: "overview" | "fees" | "salaries";
+  userProfile?: any;
+  initialTab?: "overview" | "fees" | "salaries" | "expenses";
   students: Student[];
   fees: FeeRecord[];
+  expenses: Expense[];
 }) => {
-  const [activeTab, setActiveTab] = useState<"overview" | "fees" | "salaries">(initialTab);
+  const [activeTab, setActiveTab] = useState<"overview" | "fees" | "salaries" | "expenses">(initialTab);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedClass, setSelectedClass] = useState(userRole === "Student" ? userProfile?.grade : "All Classes");
+  const [isStudent, setIsStudent] = useState(userRole === "Student");
   
   useEffect(() => {
     setActiveTab(initialTab);
   }, [initialTab]);
 
-  const [feeTab, setFeeTab] = useState<"collection" | "structure" | "defaulters" | "tracking">("structure");
+  const [feeTab, setFeeTab] = useState<"collection" | "structure" | "defaulters" | "tracking">(userRole === "Student" ? "tracking" : "structure");
   const [salaryTab, setSalaryTab] = useState<"monthly" | "yearly" | "setup">("monthly");
   const [showCollectFeeModal, setShowCollectFeeModal] = useState(false);
   const [newFee, setNewFee] = useState({ student: "", rollNo: "", grade: "Grade 10-A", amount: "", method: "Cash" });
   const [selectedGrade, setSelectedGrade] = useState("Grade 10-A");
   const [isUploading, setIsUploading] = useState(false);
+  const [isSavingExpense, setIsSavingExpense] = useState(false);
+  const [showAddExpenseModal, setShowAddExpenseModal] = useState(false);
+  const [newExpense, setNewExpense] = useState({ title: "", category: "Utilities", amount: "", description: "" });
+  const [expenseFilter, setExpenseFilter] = useState("All");
   const [trackingSearch, setTrackingSearch] = useState("");
   const [trackingGrade, setTrackingGrade] = useState("All Grades");
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1134,27 +1160,29 @@ export const FinanceManagement = ({
 
   const renderFeeManagement = () => (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div className="flex p-1.5 bg-white rounded-2xl border border-slate-200 shadow-sm w-fit">
-        {[
-          { id: "structure", label: "Fee Structure", icon: Settings },
-          { id: "collection", label: "Fee Collection", icon: CircleDollarSign },
-          { id: "defaulters", label: "Defaulters List", icon: ShieldAlert },
-          { id: "tracking", label: "Fee Tracking", icon: Search },
-        ].map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setFeeTab(tab.id as any)}
-            className={`flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-black transition-all ${
-              feeTab === tab.id 
-                ? "bg-indigo-600 text-white shadow-lg shadow-indigo-100" 
-                : "text-slate-500 hover:text-slate-900 hover:bg-slate-50"
-            }`}
-          >
-            <tab.icon className="w-4 h-4" />
-            {tab.label}
-          </button>
-        ))}
-      </div>
+      {!isStudent && (
+        <div className="flex p-1.5 bg-white rounded-2xl border border-slate-200 shadow-sm w-fit">
+          {[
+            { id: "structure", label: "Fee Structure", icon: Settings },
+            { id: "collection", label: "Fee Collection", icon: CircleDollarSign },
+            { id: "defaulters", label: "Defaulters List", icon: ShieldAlert },
+            { id: "tracking", label: "Fee Tracking", icon: Search },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setFeeTab(tab.id as any)}
+              className={`flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-black transition-all ${
+                feeTab === tab.id 
+                  ? "bg-indigo-600 text-white shadow-lg shadow-indigo-100" 
+                  : "text-slate-500 hover:text-slate-900 hover:bg-slate-50"
+              }`}
+            >
+              <tab.icon className="w-4 h-4" />
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {feeTab === "collection" && (
         <Card className="rounded-[3rem] border-slate-200/60 shadow-xl overflow-hidden bg-white">
@@ -1410,6 +1438,7 @@ export const FinanceManagement = ({
                 <tbody className="divide-y divide-slate-50">
                   {fees
                     .filter(f => {
+                      if (isStudent) return f.student === userProfile?.name;
                       const matchesSearch = f.student.toLowerCase().includes(trackingSearch.toLowerCase()) || 
                                           (f.rollNo && f.rollNo.toLowerCase().includes(trackingSearch.toLowerCase()));
                       const matchesGrade = trackingGrade === "All Grades" || f.grade === trackingGrade;
@@ -1434,6 +1463,7 @@ export const FinanceManagement = ({
                 </tbody>
               </table>
               {fees.filter(f => {
+                if (isStudent) return f.student === userProfile?.name;
                 const matchesSearch = f.student.toLowerCase().includes(trackingSearch.toLowerCase()) || 
                                     (f.rollNo && f.rollNo.toLowerCase().includes(trackingSearch.toLowerCase()));
                 const matchesGrade = trackingGrade === "All Grades" || f.grade === trackingGrade;
@@ -1760,26 +1790,235 @@ export const FinanceManagement = ({
     </div>
   );
 
+  const handleAddExpense = async () => {
+    if (!newExpense.title || !newExpense.amount) return;
+    setIsSavingExpense(true);
+    try {
+      const expenseData = {
+        title: newExpense.title,
+        category: newExpense.category,
+        amount: parseFloat(newExpense.amount),
+        description: newExpense.description,
+        date: new Date().toISOString().split('T')[0],
+        status: "Paid"
+      };
+      await setDoc(doc(collection(db, "expenses")), expenseData);
+      setShowAddExpenseModal(false);
+      setNewExpense({ title: "", category: "Utilities", amount: "", description: "" });
+    } catch (error) {
+      console.error("Error adding expense:", error);
+    } finally {
+      setIsSavingExpense(false);
+    }
+  };
+
+  const renderExpenseManagement = () => (
+    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      <Card className="rounded-[3rem] border-slate-200/60 shadow-xl overflow-hidden bg-white">
+        <div className="p-8 border-b border-slate-100 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
+          <div>
+            <h3 className="text-2xl font-black text-slate-900">Expense Tracking</h3>
+            <p className="text-slate-500 font-medium">Monitor and manage institutional expenditures</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <select 
+              value={expenseFilter}
+              onChange={(e) => setExpenseFilter(e.target.value)}
+              className="h-14 px-6 rounded-2xl bg-slate-50 border border-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm font-bold w-48 appearance-none cursor-pointer hover:bg-slate-100 transition-colors"
+            >
+              <option value="All">All Categories</option>
+              <option value="Utilities">Utilities</option>
+              <option value="Maintenance">Maintenance</option>
+              <option value="Supplies">Supplies</option>
+              <option value="Events">Events</option>
+              <option value="Other">Other</option>
+            </select>
+            <Button 
+              onClick={() => setShowAddExpenseModal(true)}
+              className="rounded-2xl font-black px-8 h-14 bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-100 gap-2"
+            >
+              <Plus className="w-5 h-5" /> Record Expense
+            </Button>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-left">
+            <thead>
+              <tr className="bg-slate-50/50">
+                <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Date</th>
+                <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Title</th>
+                <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Category</th>
+                <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Amount</th>
+                <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-50">
+              {expenses
+                .filter(e => expenseFilter === "All" || e.category === expenseFilter)
+                .map((expense) => (
+                  <tr key={expense.id} className="hover:bg-slate-50/50 transition-colors">
+                    <td className="px-8 py-5 text-sm font-bold text-slate-400">{expense.date}</td>
+                    <td className="px-8 py-5 font-black text-slate-900">{expense.title}</td>
+                    <td className="px-8 py-5">
+                      <Badge variant="secondary" className="rounded-lg font-bold bg-slate-100 text-slate-600 border-none">
+                        {expense.category}
+                      </Badge>
+                    </td>
+                    <td className="px-8 py-5 font-black text-slate-900">Rs. {expense.amount.toLocaleString()}</td>
+                    <td className="px-8 py-5">
+                      <Badge className={`rounded-lg font-black ${expense.status === "Paid" ? "bg-emerald-50 text-emerald-600 border-emerald-100" : "bg-amber-50 text-amber-600 border-amber-100"}`}>
+                        {expense.status}
+                      </Badge>
+                    </td>
+                  </tr>
+                ))}
+            </tbody>
+          </table>
+          {expenses.filter(e => expenseFilter === "All" || e.category === expenseFilter).length === 0 && (
+            <div className="p-20 text-center">
+              <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-6">
+                <TrendingUp className="w-10 h-10 text-slate-300" />
+              </div>
+              <h4 className="text-xl font-black text-slate-900 mb-2">No Expenses Recorded</h4>
+              <p className="text-slate-500 font-medium">Start tracking your institutional spending</p>
+            </div>
+          )}
+        </div>
+      </Card>
+
+      <Dialog open={showAddExpenseModal} onOpenChange={setShowAddExpenseModal}>
+        <DialogContent className="sm:max-w-[600px] rounded-[3rem] p-0 overflow-hidden border-none shadow-2xl">
+          <div className="bg-indigo-600 p-10 text-white relative overflow-hidden">
+            <div className="relative z-10">
+              <h2 className="text-3xl font-black tracking-tight mb-2">Record Expense</h2>
+              <p className="text-indigo-100 font-medium">Log a new institutional expenditure</p>
+            </div>
+            <TrendingUp className="absolute -right-8 -bottom-8 w-48 h-48 text-white/10 rotate-12" />
+          </div>
+          
+          <div className="p-10 space-y-8 bg-white">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-2">
+                <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Expense Title</label>
+                <input 
+                  type="text" 
+                  placeholder="e.g. Electricity Bill" 
+                  value={newExpense.title}
+                  onChange={(e) => setNewExpense({...newExpense, title: e.target.value})}
+                  className="w-full h-14 px-6 rounded-2xl bg-slate-50 border border-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-bold" 
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Category</label>
+                <select 
+                  value={newExpense.category}
+                  onChange={(e) => setNewExpense({...newExpense, category: e.target.value as any})}
+                  className="w-full h-14 px-6 rounded-2xl bg-slate-50 border border-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-bold appearance-none cursor-pointer"
+                >
+                  <option value="Utilities">Utilities</option>
+                  <option value="Maintenance">Maintenance</option>
+                  <option value="Supplies">Supplies</option>
+                  <option value="Events">Events</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Amount (PKR)</label>
+                <input 
+                  type="number" 
+                  placeholder="5000" 
+                  value={newExpense.amount}
+                  onChange={(e) => setNewExpense({...newExpense, amount: e.target.value})}
+                  className="w-full h-14 px-6 rounded-2xl bg-slate-50 border border-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-bold" 
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Description</label>
+                <input 
+                  type="text" 
+                  placeholder="Optional details..." 
+                  value={newExpense.description}
+                  onChange={(e) => setNewExpense({...newExpense, description: e.target.value})}
+                  className="w-full h-14 px-6 rounded-2xl bg-slate-50 border border-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-bold" 
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-4 pt-4">
+              <Button 
+                onClick={handleAddExpense}
+                disabled={isSavingExpense}
+                className="flex-1 h-16 bg-indigo-600 hover:bg-indigo-700 rounded-2xl font-black text-lg shadow-xl shadow-indigo-100 transition-all"
+              >
+                {isSavingExpense ? <Loader2 className="w-6 h-6 animate-spin" /> : "Record Expense"}
+              </Button>
+              <Button 
+                variant="ghost" 
+                onClick={() => setShowAddExpenseModal(false)}
+                className="h-16 px-8 rounded-2xl font-black text-slate-500 hover:bg-slate-100"
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+
   return (
     <div className="space-y-8">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
         <div>
           <h2 className="text-4xl font-black tracking-tight text-slate-900">
-            {activeTab === "overview" ? "Finance Overview" : activeTab === "fees" ? "Fee Management" : "Salary Management"}
+            {isStudent ? "My Fee Records" : activeTab === "overview" ? "Finance Overview" : activeTab === "fees" ? "Fee Management" : activeTab === "salaries" ? "Salary Management" : "Expense Management"}
           </h2>
           <p className="text-slate-500 font-medium">
-            {activeTab === "overview" 
-              ? "Real-time fiscal health and revenue analytics" 
-              : activeTab === "fees" 
-                ? "Comprehensive student fee lifecycle control" 
-                : "Automated payroll and staff expenditure tracking"}
+            {isStudent 
+              ? "View and track your academic fee payments"
+              : activeTab === "overview" 
+                ? "Real-time fiscal health and revenue analytics" 
+                : activeTab === "fees" 
+                  ? "Comprehensive student fee lifecycle control" 
+                  : activeTab === "salaries"
+                    ? "Automated payroll and staff expenditure tracking"
+                    : "Institutional expense tracking and budgeting"}
           </p>
         </div>
+        {!isStudent && (
+          <div className="flex p-1.5 bg-white rounded-2xl border border-slate-200 shadow-sm">
+            {[
+              { id: "overview", label: "Overview", icon: BarChart3 },
+              { id: "fees", label: "Fees", icon: CircleDollarSign },
+              { id: "salaries", label: "Salaries", icon: Users },
+              { id: "expenses", label: "Expenses", icon: TrendingUp },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id as any)}
+                className={`flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-black transition-all ${
+                  activeTab === tab.id 
+                    ? "bg-indigo-600 text-white shadow-lg shadow-indigo-100" 
+                    : "text-slate-500 hover:text-slate-900 hover:bg-slate-50"
+                }`}
+              >
+                <tab.icon className="w-4 h-4" />
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
-      {activeTab === "overview" && renderOverview()}
-      {activeTab === "fees" && renderFeeManagement()}
-      {activeTab === "salaries" && renderSalaryManagement()}
+      {isStudent ? renderFeeManagement() : (
+        <>
+          {activeTab === "overview" && renderOverview()}
+          {activeTab === "fees" && renderFeeManagement()}
+          {activeTab === "salaries" && renderSalaryManagement()}
+          {activeTab === "expenses" && renderExpenseManagement()}
+        </>
+      )}
     </div>
   );
 };
@@ -1796,206 +2035,242 @@ export const AcademicAnalytics = ({
   const [isGenerating, setIsGenerating] = useState(false);
   const [socialPost, setSocialPost] = useState<string>("");
   const [isGeneratingPost, setIsGeneratingPost] = useState(false);
+  const [selectedStudent, setSelectedStudent] = useState<Student | null>(students[0] || null);
 
-  const data = [
-    { subject: 'Math', score: 85, average: 72 },
-    { subject: 'Science', score: 92, average: 78 },
-    { subject: 'English', score: 78, average: 82 },
-    { subject: 'History', score: 88, average: 75 },
-    { subject: 'Physics', score: 95, average: 70 },
-    { subject: 'Arts', score: 82, average: 85 },
+  const performanceData = [
+    { subject: 'Math', score: selectedStudent?.examResults?.math || 0, average: 72, fullMark: 100 },
+    { subject: 'Science', score: selectedStudent?.examResults?.science || 0, average: 78, fullMark: 100 },
+    { subject: 'English', score: selectedStudent?.examResults?.english || 0, average: 82, fullMark: 100 },
+    { subject: 'History', score: 88, average: 75, fullMark: 100 },
+    { subject: 'Physics', score: 95, average: 70, fullMark: 100 },
+    { subject: 'Arts', score: 82, average: 85, fullMark: 100 },
+  ];
+
+  const attendanceTrend = [
+    { month: 'Jan', attendance: 95 },
+    { month: 'Feb', attendance: 92 },
+    { month: 'Mar', attendance: 98 },
+    { month: 'Apr', attendance: 94 },
+    { month: 'May', attendance: 96 },
+    { month: 'Jun', attendance: 90 },
   ];
 
   const handleGenerateAI = async () => {
-    if (students.length === 0) return;
+    if (!selectedStudent) return;
     setIsGenerating(true);
-    const insights = await getPredictiveAnalytics(students[0]);
-    setAiInsights(insights);
-    setIsGenerating(false);
+    try {
+      const insights = await getPredictiveAnalytics(selectedStudent);
+      setAiInsights(insights);
+    } catch (error) {
+      console.error("Error generating AI insights:", error);
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   const handleGeneratePost = async () => {
     setIsGeneratingPost(true);
-    const post = await generateSocialPost("Our students achieved a 95% success rate in the recent Science Olympiad!");
-    setSocialPost(post);
-    setIsGeneratingPost(false);
+    try {
+      const post = await generateSocialPost(`Our student ${selectedStudent?.name} achieved excellent results in the recent assessments!`);
+      setSocialPost(post);
+    } catch (error) {
+      console.error("Error generating social post:", error);
+    } finally {
+      setIsGeneratingPost(false);
+    }
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
+    <div className="space-y-8 animate-in fade-in duration-700">
+      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
         <div>
-          <h2 className="text-3xl font-black tracking-tight text-slate-900">Academic Analytics</h2>
-          <p className="text-slate-500 font-medium">Performance benchmarking and growth tracking</p>
+          <h2 className="text-4xl font-black tracking-tight text-slate-900">Academic Analytics</h2>
+          <p className="text-slate-500 font-medium text-lg">AI-powered performance tracking and predictive insights</p>
         </div>
-        <div className="flex gap-3">
-          <Button 
-            onClick={handleGeneratePost}
-            disabled={isGeneratingPost}
-            className="bg-indigo-50 text-indigo-600 hover:bg-indigo-100 rounded-xl font-bold gap-2"
+        <div className="flex gap-4">
+          <select 
+            onChange={(e) => setSelectedStudent(students.find(s => s.id === e.target.value) || null)}
+            className="h-14 px-6 rounded-2xl bg-white border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm font-bold w-64 shadow-sm"
           >
-            {isGeneratingPost ? <Loader2 className="w-4 h-4 animate-spin" /> : <Users className="w-4 h-4" />}
-            Generate Social Post
-          </Button>
+            <option value="">Select Student</option>
+            {students.map(s => (
+              <option key={s.id} value={s.id}>{s.name} - {s.grade}</option>
+            ))}
+          </select>
           <Button 
             onClick={handleGenerateAI}
-            disabled={isGenerating || students.length === 0}
-            className="bg-indigo-600 hover:bg-indigo-700 rounded-xl font-bold gap-2 shadow-lg shadow-indigo-100"
+            disabled={isGenerating || !selectedStudent}
+            className="h-14 px-8 rounded-2xl bg-indigo-600 hover:bg-indigo-700 font-black gap-2 shadow-lg shadow-indigo-100"
           >
-            {isGenerating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
+            {isGenerating ? <Loader2 className="w-5 h-5 animate-spin" /> : <Zap className="w-5 h-5" />}
             Generate AI Insights
           </Button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 space-y-6">
-          <Card className="rounded-[2rem] border-slate-200/60 shadow-sm p-8 bg-white">
-            <CardHeader className="px-0 pt-0">
-              <CardTitle className="text-xl font-black tracking-tight">Subject Performance Index</CardTitle>
-            </CardHeader>
-            <div className="h-96 w-full">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <Card className="lg:col-span-2 rounded-[3rem] border-slate-200/60 shadow-xl bg-white overflow-hidden p-8">
+          <div className="flex items-center justify-between mb-8">
+            <h3 className="text-2xl font-black text-slate-900">Subject Performance</h3>
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full bg-indigo-600" />
+                <span className="text-xs font-bold text-slate-500">Student Score</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full bg-slate-200" />
+                <span className="text-xs font-bold text-slate-500">Class Average</span>
+              </div>
+            </div>
+          </div>
+          <div className="h-[400px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <RadarChart cx="50%" cy="50%" outerRadius="80%" data={performanceData}>
+                <PolarGrid stroke="#e2e8f0" />
+                <PolarAngleAxis dataKey="subject" tick={{ fill: '#64748b', fontSize: 12, fontWeight: 800 }} />
+                <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} axisLine={false} />
+                <Radar
+                  name="Student"
+                  dataKey="score"
+                  stroke="#4f46e5"
+                  fill="#4f46e5"
+                  fillOpacity={0.6}
+                />
+                <Radar
+                  name="Average"
+                  dataKey="average"
+                  stroke="#cbd5e1"
+                  fill="#cbd5e1"
+                  fillOpacity={0.3}
+                />
+                <Tooltip 
+                  contentStyle={{ borderRadius: '1rem', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                  itemStyle={{ fontWeight: 800 }}
+                />
+              </RadarChart>
+            </ResponsiveContainer>
+          </div>
+        </Card>
+
+        <div className="space-y-8">
+          <Card className="rounded-[3rem] border-slate-200/60 shadow-xl bg-indigo-600 p-8 text-white relative overflow-hidden">
+            <div className="relative z-10">
+              <h3 className="text-xl font-black mb-2">Predictive Score</h3>
+              <div className="text-6xl font-black mb-4">88%</div>
+              <p className="text-indigo-100 text-sm font-medium leading-relaxed">
+                Based on current trends, {selectedStudent?.name || "the student"} is projected to achieve an A grade in the upcoming finals.
+              </p>
+            </div>
+            <TrendingUp className="absolute -right-8 -bottom-8 w-48 h-48 text-white/10 rotate-12" />
+          </Card>
+
+          <Card className="rounded-[3rem] border-slate-200/60 shadow-xl bg-white p-8">
+            <h3 className="text-xl font-black text-slate-900 mb-6">Attendance Trend</h3>
+            <div className="h-[200px] w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={data}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                  <XAxis dataKey="subject" axisLine={false} tickLine={false} tick={{fontSize: 12, fontWeight: 600, fill: '#94a3b8'}} />
-                  <YAxis axisLine={false} tickLine={false} tick={{fontSize: 12, fontWeight: 600, fill: '#94a3b8'}} />
+                <AreaChart data={attendanceTrend}>
+                  <defs>
+                    <linearGradient id="colorAtt" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#4f46e5" stopOpacity={0.3}/>
+                      <stop offset="95%" stopColor="#4f46e5" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
                   <Tooltip 
-                    cursor={{fill: '#f8fafc'}}
                     contentStyle={{ borderRadius: '1rem', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
                   />
-                  <Bar dataKey="score" fill="#4f46e5" radius={[6, 6, 0, 0]} barSize={40} name="Current Score" />
-                  <Bar dataKey="average" fill="#e2e8f0" radius={[6, 6, 0, 0]} barSize={40} name="Class Average" />
-                </BarChart>
+                  <Area type="monotone" dataKey="attendance" stroke="#4f46e5" strokeWidth={3} fillOpacity={1} fill="url(#colorAtt)" />
+                </AreaChart>
               </ResponsiveContainer>
-            </div>
-          </Card>
-
-          {aiInsights && (
-            <Card className="rounded-[2rem] border-indigo-100 shadow-xl p-8 bg-indigo-50/30 border-2 animate-in slide-in-from-bottom-4 duration-500">
-              <div className="flex items-center gap-4 mb-6">
-                <div className="w-12 h-12 bg-indigo-600 rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-200">
-                  <Zap className="text-white w-6 h-6" />
-                </div>
-                <div>
-                  <h3 className="text-xl font-black text-slate-900">Gemini Predictive Insights</h3>
-                  <p className="text-indigo-600 font-bold text-sm">AI-Generated for {students[0].name}</p>
-                </div>
-              </div>
-              
-              <div className="grid md:grid-cols-2 gap-8">
-                <div className="space-y-6">
-                  <div>
-                    <p className="text-xs font-black uppercase tracking-widest text-slate-400 mb-2">Performance Trend</p>
-                    <Badge className={`rounded-lg px-3 py-1 font-black ${
-                      aiInsights.performanceTrend === 'Improving' ? 'bg-emerald-100 text-emerald-700' : 
-                      aiInsights.performanceTrend === 'At Risk' ? 'bg-rose-100 text-rose-700' : 'bg-blue-100 text-blue-700'
-                    }`}>
-                      {aiInsights.performanceTrend}
-                    </Badge>
-                  </div>
-                  <div>
-                    <p className="text-xs font-black uppercase tracking-widest text-slate-400 mb-2">Focus Areas</p>
-                    <div className="flex flex-wrap gap-2">
-                      {aiInsights.subjectsNeedingAttention?.map((s: string) => (
-                        <Badge key={s} variant="outline" className="rounded-lg border-indigo-200 text-indigo-700 bg-white font-bold">{s}</Badge>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-                <div className="space-y-6">
-                  <div>
-                    <p className="text-xs font-black uppercase tracking-widest text-slate-400 mb-2">Recommendations</p>
-                    <ul className="space-y-2">
-                      {aiInsights.recommendations?.map((r: string, i: number) => (
-                        <li key={i} className="text-sm font-medium text-slate-600 flex gap-2">
-                          <CheckCircle2 className="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
-                          {r}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                </div>
-              </div>
-              <div className="mt-8 pt-6 border-t border-indigo-100">
-                <p className="text-sm italic text-indigo-700 font-medium">"{aiInsights.motivationalMessage}"</p>
-              </div>
-            </Card>
-          )}
-
-          {socialPost && (
-            <Card className="rounded-[2rem] border-slate-200 shadow-sm p-8 bg-white animate-in slide-in-from-bottom-4 duration-500">
-              <div className="flex items-center justify-between mb-6">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-200">
-                    <Users className="text-white w-6 h-6" />
-                  </div>
-                  <h3 className="text-xl font-black text-slate-900">Automated Social Post</h3>
-                </div>
-                <Button variant="ghost" size="sm" className="text-slate-400" onClick={() => setSocialPost("")}>
-                  <X className="w-4 h-4" />
-                </Button>
-              </div>
-              <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100">
-                <p className="text-slate-700 whitespace-pre-wrap font-medium">{socialPost}</p>
-              </div>
-              <div className="mt-6 flex justify-end gap-3">
-                <Button variant="outline" className="rounded-xl font-bold border-slate-200">Copy Text</Button>
-                <Button className="bg-blue-600 hover:bg-blue-700 rounded-xl font-bold">Post to Facebook</Button>
-              </div>
-            </Card>
-          )}
-        </div>
-
-        <div className="space-y-6">
-          <Card className="rounded-[2rem] border-slate-200/60 shadow-sm p-6 bg-indigo-600 text-white">
-            <h4 className="text-xs font-black uppercase tracking-widest text-indigo-200 mb-4">Top Performer</h4>
-            {students.length > 0 ? (
-              <>
-                <div className="flex items-center gap-4 mb-6">
-                  <div className="w-16 h-16 rounded-2xl bg-white/10 backdrop-blur-md flex items-center justify-center text-2xl font-black">
-                    {students[0].name.substring(0, 2).toUpperCase()}
-                  </div>
-                  <div>
-                    <p className="text-xl font-black">{students[0].name}</p>
-                    <p className="text-indigo-200 font-medium">{students[0].grade}</p>
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-white/10 rounded-2xl p-4">
-                    <p className="text-[10px] font-black uppercase tracking-widest text-indigo-200 mb-1">GPA</p>
-                    <p className="text-2xl font-black">3.98</p>
-                  </div>
-                  <div className="bg-white/10 rounded-2xl p-4">
-                    <p className="text-[10px] font-black uppercase tracking-widest text-indigo-200 mb-1">Rank</p>
-                    <p className="text-2xl font-black">#1</p>
-                  </div>
-                </div>
-              </>
-            ) : (
-              <p className="text-indigo-200 font-medium">No student data available</p>
-            )}
-          </Card>
-
-          <Card className="rounded-[2rem] border-slate-200/60 shadow-sm p-6 bg-white">
-            <h4 className="text-xs font-black uppercase tracking-widest text-slate-400 mb-4">Growth Insights</h4>
-            <div className="space-y-4">
-              <div className="flex items-start gap-3">
-                <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 shrink-0">
-                  <ArrowUpRight className="w-4 h-4" />
-                </div>
-                <p className="text-sm font-medium text-slate-600">Math scores improved by <span className="font-bold text-slate-900">15%</span> compared to last term.</p>
-              </div>
-              <div className="flex items-start gap-3">
-                <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center text-amber-600 shrink-0">
-                  <Filter className="w-4 h-4" />
-                </div>
-                <p className="text-sm font-medium text-slate-600">English requires attention in <span className="font-bold text-slate-900">34%</span> of students.</p>
-              </div>
             </div>
           </Card>
         </div>
       </div>
+
+      {aiInsights && (
+        <Card className="rounded-[3rem] border-indigo-100 shadow-2xl shadow-indigo-50 bg-white overflow-hidden animate-in slide-in-from-bottom-8 duration-700">
+          <div className="bg-indigo-600 p-8 text-white flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-white/20 flex items-center justify-center backdrop-blur-md">
+                <Zap className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-2xl font-black tracking-tight">AI Academic Insights</h3>
+                <p className="text-indigo-100 font-medium">Personalized recommendations for {selectedStudent?.name}</p>
+              </div>
+            </div>
+            <Badge className="bg-white text-indigo-600 rounded-full px-6 py-2 font-black text-xs uppercase tracking-widest">
+              Gemini 1.5 Flash
+            </Badge>
+          </div>
+          <div className="p-10 grid grid-cols-1 md:grid-cols-2 gap-10">
+            <div className="space-y-6">
+              <div className="p-6 rounded-[2rem] bg-slate-50 border border-slate-100">
+                <h4 className="text-sm font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                  <Target className="w-4 h-4 text-indigo-600" /> Strengths
+                </h4>
+                <ul className="space-y-3">
+                  {aiInsights.strengths.map((s: string, i: number) => (
+                    <li key={i} className="flex items-start gap-3 text-slate-700 font-bold">
+                      <div className="w-5 h-5 rounded-full bg-emerald-100 flex items-center justify-center shrink-0 mt-0.5">
+                        <div className="w-2 h-2 rounded-full bg-emerald-500" />
+                      </div>
+                      {s}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div className="p-6 rounded-[2rem] bg-slate-50 border border-slate-100">
+                <h4 className="text-sm font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-amber-500" /> Areas for Improvement
+                </h4>
+                <ul className="space-y-3">
+                  {aiInsights.weaknesses.map((w: string, i: number) => (
+                    <li key={i} className="flex items-start gap-3 text-slate-700 font-bold">
+                      <div className="w-5 h-5 rounded-full bg-amber-100 flex items-center justify-center shrink-0 mt-0.5">
+                        <div className="w-2 h-2 rounded-full bg-amber-500" />
+                      </div>
+                      {w}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+            <div className="space-y-6">
+              <div className="p-8 rounded-[2.5rem] bg-indigo-50/50 border border-indigo-100">
+                <h4 className="text-xl font-black text-indigo-900 mb-4">Personalized Study Plan</h4>
+                <p className="text-indigo-700 font-medium leading-relaxed mb-6">
+                  {aiInsights.recommendation}
+                </p>
+                <Button className="w-full h-14 bg-indigo-600 hover:bg-indigo-700 rounded-2xl font-black shadow-lg shadow-indigo-100">
+                  Download Detailed Plan
+                </Button>
+              </div>
+              
+              <div className="p-8 rounded-[2.5rem] bg-slate-900 text-white relative overflow-hidden">
+                <div className="relative z-10">
+                  <h4 className="text-lg font-black mb-2 flex items-center gap-2">
+                    <Share2 className="w-5 h-5 text-indigo-400" /> Social Recognition
+                  </h4>
+                  <p className="text-slate-400 text-sm font-medium mb-6">Generate a post to celebrate this student's progress.</p>
+                  {socialPost ? (
+                    <div className="p-4 rounded-xl bg-white/10 border border-white/10 text-sm font-medium italic mb-4">
+                      "{socialPost}"
+                    </div>
+                  ) : null}
+                  <Button 
+                    onClick={handleGeneratePost}
+                    disabled={isGeneratingPost}
+                    className="w-full h-14 bg-white text-slate-900 hover:bg-slate-100 rounded-2xl font-black"
+                  >
+                    {isGeneratingPost ? <Loader2 className="w-5 h-5 animate-spin" /> : "Generate Social Post"}
+                  </Button>
+                </div>
+                <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/20 blur-3xl rounded-full -mr-16 -mt-16" />
+              </div>
+            </div>
+          </div>
+        </Card>
+      )}
     </div>
   );
 };
@@ -2009,6 +2284,7 @@ export const GuardianEngagementHub = ({
   students: Student[];
 }) => {
   const [selectedClass, setSelectedClass] = useState("Grade 10-A");
+  const [activeStudent, setActiveStudent] = useState<Student | null>(null);
 
   const filteredStudents = students.filter(s => s.grade === selectedClass);
 
@@ -2043,99 +2319,136 @@ export const GuardianEngagementHub = ({
   };
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-500">
-      <div className="flex justify-between items-center">
+    <div className="space-y-8 animate-in fade-in duration-700">
+      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
         <div>
-          <h2 className="text-3xl font-black tracking-tight text-slate-900">Guardian Engagement Hub</h2>
-          <p className="text-slate-500 font-medium">View and verify your child's academic progress</p>
+          <h2 className="text-4xl font-black tracking-tight text-slate-900">Guardian Engagement Hub</h2>
+          <p className="text-slate-500 font-medium text-lg">Real-time collaboration between home and school</p>
         </div>
-        <div className="space-y-2">
-          <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-1">Select Class</label>
-          <select 
-            value={selectedClass}
-            onChange={(e) => setSelectedClass(e.target.value)}
-            className="h-12 px-6 rounded-xl bg-slate-50 border border-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm font-bold w-48 appearance-none cursor-pointer hover:bg-slate-100 transition-colors"
-          >
-            <option value="Grade 10-A">Grade 10-A</option>
-            <option value="Grade 10-B">Grade 10-B</option>
-            <option value="Grade 11-A">Grade 11-A</option>
-            <option value="Grade 11-B">Grade 11-B</option>
-          </select>
+        <div className="flex gap-4">
+          <div className="space-y-2">
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-1">Select Grade</label>
+            <select 
+              value={selectedClass}
+              onChange={(e) => setSelectedClass(e.target.value)}
+              className="h-14 px-6 rounded-2xl bg-white border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm font-bold w-48 shadow-sm"
+            >
+              <option value="Grade 10-A">Grade 10-A</option>
+              <option value="Grade 10-B">Grade 10-B</option>
+              <option value="Grade 11-A">Grade 11-A</option>
+              <option value="Grade 11-B">Grade 11-B</option>
+            </select>
+          </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-6">
-        {filteredStudents.map(student => (
-          <Card key={student.id} className="rounded-[2.5rem] border-slate-200/60 shadow-sm overflow-hidden group hover:border-indigo-300 transition-all">
-            <div className="p-8 flex flex-col md:flex-row items-center justify-between gap-8">
-              <div className="flex items-center gap-6">
-                <div className="w-20 h-20 rounded-3xl bg-indigo-50 flex items-center justify-center text-3xl font-black text-indigo-600 shadow-inner">
-                  {student.name.charAt(0)}
-                </div>
-                <div>
-                  <h3 className="text-2xl font-black text-slate-900 tracking-tight">{student.name}</h3>
-                  <p className="text-slate-500 font-medium">{student.grade} • Roll #00{student.id}</p>
-                  <div className="flex items-center gap-2 mt-2">
-                    {student.checkedByParent ? (
-                      <Badge className="bg-emerald-100 text-emerald-700 rounded-full px-3 py-1 font-bold flex items-center gap-1">
-                        <CheckCircle2 className="w-3 h-3" /> Checked by Parent
-                      </Badge>
-                    ) : (
-                      <Badge className="bg-amber-100 text-amber-700 rounded-full px-3 py-1 font-bold">
-                        Pending Review
-                      </Badge>
-                    )}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div className="space-y-6">
+          <h3 className="text-xl font-black text-slate-900 flex items-center gap-2">
+            <Users className="w-5 h-5 text-indigo-600" /> Student Directory
+          </h3>
+          {filteredStudents.map(student => (
+            <Card 
+              key={student.id} 
+              onClick={() => setActiveStudent(student)}
+              className={`rounded-[2.5rem] border-slate-200/60 shadow-sm overflow-hidden cursor-pointer transition-all ${activeStudent?.id === student.id ? 'ring-2 ring-indigo-500 border-transparent shadow-indigo-100' : 'hover:border-indigo-300'}`}
+            >
+              <div className="p-6 flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="w-14 h-14 rounded-2xl bg-indigo-50 flex items-center justify-center text-xl font-black text-indigo-600">
+                    {student.name.charAt(0)}
+                  </div>
+                  <div>
+                    <h4 className="font-black text-slate-900">{student.name}</h4>
+                    <p className="text-xs font-bold text-slate-400">Roll: {student.rollNumber || student.id}</p>
                   </div>
                 </div>
-              </div>
-
-              <div className="flex flex-wrap gap-4">
-                <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100 min-w-[100px] text-center">
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Math</p>
-                  <p className="text-xl font-black text-slate-900">{student.examResults.math}%</p>
-                </div>
-                <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100 min-w-[100px] text-center">
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Science</p>
-                  <p className="text-xl font-black text-slate-900">{student.examResults.science}%</p>
-                </div>
-                <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100 min-w-[100px] text-center">
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">English</p>
-                  <p className="text-xl font-black text-slate-900">{student.examResults.english}%</p>
+                <div className="flex items-center gap-3">
+                  {student.checkedByParent ? (
+                    <Badge className="bg-emerald-50 text-emerald-600 border-emerald-100 rounded-lg font-black">Verified</Badge>
+                  ) : (
+                    <Badge className="bg-amber-50 text-amber-600 border-amber-100 rounded-lg font-black">Pending Sign</Badge>
+                  )}
+                  <ChevronRight className="w-5 h-5 text-slate-300" />
                 </div>
               </div>
+            </Card>
+          ))}
+        </div>
 
-              <div className="flex gap-3">
-                <Button 
-                  onClick={() => generatePDF(`Report_Card_${student.name}`, [[student.name, student.examResults.math.toString(), student.examResults.science.toString(), student.examResults.english.toString()]], [['Student', 'Math', 'Science', 'English']])}
-                  variant="outline" 
-                  className="rounded-xl font-bold border-slate-200 hover:bg-slate-50 gap-2 h-12"
-                >
-                  <Download className="w-4 h-4" /> Download
-                </Button>
-                {!student.checkedByParent && (
+        <div className="lg:sticky lg:top-8 h-fit">
+          {activeStudent ? (
+            <Card className="rounded-[3rem] border-slate-200/60 shadow-2xl bg-white overflow-hidden animate-in slide-in-from-right-8 duration-500">
+              <div className="bg-indigo-600 p-10 text-white relative overflow-hidden">
+                <div className="relative z-10">
+                  <h3 className="text-3xl font-black tracking-tight mb-2">{activeStudent.name}</h3>
+                  <p className="text-indigo-100 font-medium">{activeStudent.grade} • {activeStudent.section}</p>
+                </div>
+                <BookOpen className="absolute -right-8 -bottom-8 w-48 h-48 text-white/10 rotate-12" />
+              </div>
+
+              <div className="p-10 space-y-8">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Attendance Today</p>
+                    <p className="text-lg font-black text-slate-900">{activeStudent.attendanceStatus || "Present"}</p>
+                  </div>
+                  <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Entry Time</p>
+                    <p className="text-lg font-black text-slate-900">{activeStudent.attendanceTime || "08:15 AM"}</p>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <h4 className="text-sm font-black text-slate-900 uppercase tracking-widest flex items-center gap-2">
+                    <ClipboardCheck className="w-4 h-4 text-indigo-600" /> Digital Diary
+                  </h4>
+                  <div className="p-6 rounded-2xl bg-indigo-50/50 border border-indigo-100 space-y-4">
+                    <div className="flex justify-between items-center pb-4 border-b border-indigo-100">
+                      <span className="text-sm font-black text-indigo-900">Homework Assigned</span>
+                      <span className="text-xs font-bold text-indigo-600">3 Tasks</span>
+                    </div>
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium text-indigo-800">• Math: Exercise 4.2 (Q1-Q10)</p>
+                      <p className="text-sm font-medium text-indigo-800">• Science: Prepare for Quiz on Cell Structure</p>
+                      <p className="text-sm font-medium text-indigo-800">• English: Write an essay on "My Ambition"</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex gap-4">
+                  {!activeStudent.checkedByParent ? (
+                    <Button 
+                      onClick={() => markAsChecked(activeStudent.id)}
+                      className="flex-1 h-16 bg-emerald-600 hover:bg-emerald-700 rounded-2xl font-black text-lg shadow-xl shadow-emerald-100 transition-all gap-2"
+                    >
+                      <CheckCircle2 className="w-6 h-6" /> Sign Digital Diary
+                    </Button>
+                  ) : (
+                    <div className="flex-1 h-16 bg-slate-100 rounded-2xl flex items-center justify-center gap-2 text-slate-500 font-black">
+                      <CheckCircle2 className="w-6 h-6 text-emerald-500" /> Signed by Parent
+                    </div>
+                  )}
                   <Button 
-                    onClick={async () => {
-                      try {
-                        await updateDoc(doc(db, "students", student.id), { checkedByParent: true });
-                      } catch (error) {
-                        console.error("Error marking as checked:", error);
-                      }
-                    }}
-                    className="bg-indigo-600 hover:bg-indigo-700 rounded-xl font-black gap-2 h-12 shadow-lg shadow-indigo-100"
+                    variant="outline"
+                    onClick={() => generatePDF(`Report_${activeStudent.name}`, [[activeStudent.id, activeStudent.name, activeStudent.grade, activeStudent.attendanceStatus || "Present"]], [['ID', 'Name', 'Grade', 'Attendance']])}
+                    className="h-16 px-8 rounded-2xl border-slate-200 font-black text-slate-600 hover:bg-slate-50"
                   >
-                    <CheckCircle2 className="w-4 h-4" /> Mark Checked
+                    <Download className="w-6 h-6" />
                   </Button>
-                )}
+                </div>
               </div>
+            </Card>
+          ) : (
+            <div className="h-[500px] rounded-[3rem] border-2 border-dashed border-slate-200 flex flex-col items-center justify-center text-center p-10">
+              <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mb-6">
+                <User className="w-10 h-10 text-slate-300" />
+              </div>
+              <h4 className="text-xl font-black text-slate-900 mb-2">Select a Student</h4>
+              <p className="text-slate-500 font-medium">Choose a student from the directory to view their engagement hub.</p>
             </div>
-          </Card>
-        ))}
-        {filteredStudents.length === 0 && (
-          <Card className="p-12 text-center rounded-[2.5rem] border-dashed border-2 border-slate-200">
-            <UserRound className="w-12 h-12 text-slate-300 mx-auto mb-4" />
-            <p className="text-slate-500 font-medium">No students found in this class.</p>
-          </Card>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );
@@ -2145,18 +2458,22 @@ export const GuardianEngagementHub = ({
 export const StudentManagementPortal = ({ 
   userRole, 
   userEmail,
+  userProfile,
   students
 }: { 
   userRole?: string; 
   userEmail?: string;
+  userProfile?: any;
   students: Student[];
 }) => {
-  const [activeTab, setActiveTab] = useState<"directory" | "admission" | "promotion" | "withdrawal">("directory");
+  const [activeTab, setActiveTab] = useState<"directory" | "admission" | "promotion" | "withdrawal" | "parent-interaction">("directory");
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedClass, setSelectedClass] = useState("All Classes");
+  const [selectedClass, setSelectedClass] = useState(userRole === "Student" ? userProfile?.grade : "All Classes");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
-  const [isHeadmaster, setIsHeadmaster] = useState(userRole === "Headmaster");
+  const [isHeadmaster, setIsHeadmaster] = useState(userRole === "Headmaster" || userRole === "Head of Institute");
+  const [isManagementStaff, setIsManagementStaff] = useState(userRole === "Management Staff");
+  const [isStudent, setIsStudent] = useState(userRole === "Student");
   const [promotionClass, setPromotionClass] = useState("Grade 10-A");
   const [isPromoting, setIsPromoting] = useState(false);
   const [isDegrading, setIsDegrading] = useState(false);
@@ -2243,7 +2560,8 @@ export const StudentManagementPortal = ({
   };
 
   const filteredStudents = students.filter(s => {
-    const matchesClass = selectedClass === "All Classes" || s.grade === selectedClass;
+    const classToMatch = isStudent ? userProfile?.grade : selectedClass;
+    const matchesClass = classToMatch === "All Classes" || s.grade === classToMatch;
     const matchesSearch = s.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
                          s.fatherName.toLowerCase().includes(searchQuery.toLowerCase()) ||
                          s.id.toString().includes(searchQuery);
@@ -3066,6 +3384,86 @@ export const StudentManagementPortal = ({
     </div>
   );
 
+  function renderParentInteraction() {
+    return (
+      <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200/60 shadow-sm">
+          <h3 className="text-2xl font-black text-slate-900 mb-6">Parent Interaction Center</h3>
+          <div className="flex gap-4 mb-8">
+            <div className="relative flex-1">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+              <input 
+                type="text" 
+                placeholder="Search student by name or ID to contact parent..." 
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full h-14 pl-12 pr-6 rounded-2xl bg-slate-50 border border-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-bold"
+              />
+            </div>
+            <select 
+              value={selectedClass}
+              onChange={(e) => setSelectedClass(e.target.value)}
+              className="h-14 px-6 rounded-2xl bg-slate-50 border border-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-bold appearance-none cursor-pointer"
+            >
+              <option>All Classes</option>
+              <option>Grade 10-A</option>
+              <option>Grade 10-B</option>
+              <option>Grade 9-A</option>
+            </select>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {filteredStudents.map((student) => (
+              <div key={student.id} className="p-6 rounded-[2rem] bg-slate-50 border border-slate-100 hover:shadow-lg transition-all">
+                <div className="flex items-center gap-4 mb-6">
+                  <div className="w-16 h-16 rounded-2xl bg-white flex items-center justify-center shadow-sm">
+                    <UserCircle className="w-10 h-10 text-indigo-600" />
+                  </div>
+                  <div>
+                    <h4 className="text-lg font-black text-slate-900">{student.name}</h4>
+                    <p className="text-xs font-bold text-slate-500">Grade {student.grade} • ID: {student.id}</p>
+                  </div>
+                </div>
+                <div className="space-y-3 mb-6">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-slate-500 font-bold">Fee Status:</span>
+                    <Badge className={student.status === "Active" ? "bg-emerald-50 text-emerald-600" : "bg-rose-50 text-rose-600"}>
+                      {student.status}
+                    </Badge>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-slate-500 font-bold">Last Result:</span>
+                    <span className="text-slate-900 font-black">A- (85%)</span>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <button 
+                    onClick={() => alert(`Sending fee reminder to parent of ${student.name}...`)}
+                    className="p-3 rounded-xl bg-indigo-600 text-white text-[10px] font-black uppercase tracking-widest hover:bg-indigo-700 transition-all"
+                  >
+                    Send Reminder
+                  </button>
+                  <button 
+                    onClick={() => alert(`Contacting parent of ${student.name}...`)}
+                    className="p-3 rounded-xl bg-white border border-slate-200 text-slate-600 text-[10px] font-black uppercase tracking-widest hover:bg-slate-50 transition-all"
+                  >
+                    Contact Parent
+                  </button>
+                </div>
+                <button 
+                  onClick={() => alert(`Downloading full report for ${student.name}...`)}
+                  className="w-full mt-3 p-3 rounded-xl bg-slate-900 text-white text-[10px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all flex items-center justify-center gap-2"
+                >
+                  <Download className="w-3 h-3" /> Download Reports
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-8">
       {showSuccess && (
@@ -3084,11 +3482,12 @@ export const StudentManagementPortal = ({
         </div>
         <div className="flex p-1.5 bg-white rounded-2xl border border-slate-200 shadow-sm">
           {[
-            { id: "directory", label: "Directory", icon: Users },
-            { id: "admission", label: "Admission", icon: UserPlus },
-            { id: "promotion", label: "Promotion", icon: ArrowRightLeft },
-            { id: "withdrawal", label: "Withdrawal", icon: UserMinus },
-          ].map((tab) => (
+            { id: "directory", label: "Directory", icon: Users, show: true },
+            { id: "admission", label: "Admission", icon: UserPlus, show: !isStudent },
+            { id: "promotion", label: "Promotion", icon: ArrowRightLeft, show: !isStudent },
+            { id: "withdrawal", label: "Withdrawal", icon: UserMinus, show: !isStudent },
+            { id: "parent-interaction", label: "Parent Portal", icon: MessageSquare, show: isManagementStaff },
+          ].filter(tab => tab.show).map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id as any)}
@@ -3988,6 +4387,156 @@ export const ExaminationAssessmentCenter = ({
           </Card>
         </div>
       )}
+    </div>
+  );
+};
+
+// --- Communication Portal ---
+export const CommunicationPortal = ({ 
+  userRole,
+  userProfile
+}: { 
+  userRole?: string;
+  userProfile?: any;
+}) => {
+  const [messages, setMessages] = useState([
+    { id: 1, sender: "Admin", text: "Welcome to the school portal!", time: "09:00 AM", isMe: false },
+    { id: 2, sender: "System", text: "Fee reminders sent to all parents.", time: "10:30 AM", isMe: false },
+  ]);
+  const [newMessage, setNewMessage] = useState("");
+
+  const handleSendMessage = () => {
+    if (!newMessage.trim()) return;
+    const msg = {
+      id: Date.now(),
+      sender: userProfile?.name || "Me",
+      text: newMessage,
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      isMe: true
+    };
+    setMessages([...messages, msg]);
+    setNewMessage("");
+  };
+
+  return (
+    <div className="h-[calc(100vh-12rem)] flex flex-col gap-6 animate-in fade-in duration-700">
+      <div className="flex justify-between items-center shrink-0">
+        <div>
+          <h2 className="text-4xl font-black tracking-tight text-slate-900">Communication Portal</h2>
+          <p className="text-slate-500 font-medium text-lg">Secure messaging and announcements</p>
+        </div>
+        <div className="flex gap-3">
+          <Button variant="outline" className="h-12 rounded-xl font-black border-slate-200">
+            <Users className="w-5 h-5 mr-2" /> Broadcast
+          </Button>
+          <Button className="h-12 rounded-xl font-black bg-indigo-600 text-white">
+            <Plus className="w-5 h-5 mr-2" /> New Chat
+          </Button>
+        </div>
+      </div>
+
+      <div className="flex-1 flex gap-8 overflow-hidden">
+        <Card className="w-80 rounded-[2.5rem] border-slate-200/60 shadow-xl bg-white overflow-hidden flex flex-col shrink-0">
+          <div className="p-6 border-b border-slate-100">
+            <div className="relative">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <input 
+                type="text" 
+                placeholder="Search chats..." 
+                className="w-full h-12 pl-12 pr-4 rounded-xl bg-slate-50 border border-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-sm"
+              />
+            </div>
+          </div>
+          <div className="flex-1 overflow-y-auto p-4 space-y-2 custom-scrollbar">
+            {[
+              { name: "School Announcements", lastMsg: "Holiday on Monday", time: "2h", active: true, icon: Building },
+              { name: "Parent-Teacher Group", lastMsg: "Meeting scheduled", time: "5h", active: false, icon: Users },
+              { name: "Finance Department", lastMsg: "Salary processed", time: "1d", active: false, icon: CircleDollarSign },
+            ].map((chat, i) => (
+              <button 
+                key={i}
+                className={`w-full p-4 rounded-2xl flex items-center gap-4 transition-all ${chat.active ? 'bg-indigo-50 border border-indigo-100' : 'hover:bg-slate-50 border border-transparent'}`}
+              >
+                <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${chat.active ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                  <chat.icon className="w-6 h-6" />
+                </div>
+                <div className="text-left flex-1 overflow-hidden">
+                  <div className="flex justify-between items-center mb-1">
+                    <h4 className="font-black text-slate-900 text-sm truncate">{chat.name}</h4>
+                    <span className="text-[10px] font-bold text-slate-400">{chat.time}</span>
+                  </div>
+                  <p className="text-xs font-medium text-slate-500 truncate">{chat.lastMsg}</p>
+                </div>
+              </button>
+            ))}
+          </div>
+        </Card>
+
+        <Card className="flex-1 rounded-[3rem] border-slate-200/60 shadow-2xl bg-white overflow-hidden flex flex-col">
+          <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-white/50 backdrop-blur-md sticky top-0 z-10">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-lg shadow-indigo-100">
+                <Building className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="font-black text-slate-900">School Announcements</h3>
+                <p className="text-xs font-bold text-emerald-500 flex items-center gap-1">
+                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> Official Channel
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" size="icon" className="rounded-xl hover:bg-slate-100">
+                <Phone className="w-5 h-5 text-slate-400" />
+              </Button>
+              <Button variant="ghost" size="icon" className="rounded-xl hover:bg-slate-100">
+                <MoreVertical className="w-5 h-5 text-slate-400" />
+              </Button>
+            </div>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-8 space-y-6 custom-scrollbar bg-slate-50/30">
+            {messages.map((msg) => (
+              <div key={msg.id} className={`flex ${msg.isMe ? 'justify-end' : 'justify-start'}`}>
+                <div className={`max-w-[70%] space-y-1 ${msg.isMe ? 'items-end' : 'items-start'}`}>
+                  <div className={`px-6 py-4 rounded-[2rem] text-sm font-bold shadow-sm ${msg.isMe ? 'bg-indigo-600 text-white rounded-tr-none' : 'bg-white text-slate-900 border border-slate-100 rounded-tl-none'}`}>
+                    {msg.text}
+                  </div>
+                  <div className="flex items-center gap-2 px-2">
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{msg.sender}</span>
+                    <span className="text-[10px] font-bold text-slate-300">•</span>
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{msg.time}</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="p-6 bg-white border-t border-slate-100">
+            <div className="flex gap-4 items-center">
+              <Button variant="ghost" size="icon" className="rounded-xl hover:bg-slate-100 shrink-0">
+                <Paperclip className="w-5 h-5 text-slate-400" />
+              </Button>
+              <div className="flex-1 relative">
+                <input 
+                  type="text" 
+                  placeholder="Type your message..." 
+                  value={newMessage}
+                  onChange={(e) => setNewMessage(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+                  className="w-full h-14 px-6 rounded-2xl bg-slate-50 border border-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-bold"
+                />
+              </div>
+              <Button 
+                onClick={handleSendMessage}
+                className="h-14 w-14 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white shadow-xl shadow-indigo-100 shrink-0"
+              >
+                <Send className="w-6 h-6" />
+              </Button>
+            </div>
+          </div>
+        </Card>
+      </div>
     </div>
   );
 };

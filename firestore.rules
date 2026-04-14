@@ -51,14 +51,22 @@ service cloud.firestore {
       return isAuthenticated() && 
         (request.auth.token.email == "imtiazai004@gmail.com" ||
          (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'Headmaster'));
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['Head of Institute', 'Headmaster']));
     }
 
     function isStaff() {
       return isAuthenticated() && 
         (isAdmin() || 
          (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['Teacher', 'Clerk', 'Accountant']));
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['Teacher', 'Clerk', 'Accountant', 'Management Staff']));
+    }
+
+    function isValidExpense(data) {
+      return data.keys().hasAll(['title', 'category', 'amount', 'date', 'status']) &&
+             data.title is string &&
+             data.category in ['Utilities', 'Maintenance', 'Supplies', 'Events', 'Other'] &&
+             data.amount is number &&
+             data.status in ['Pending', 'Approved', 'Paid'];
     }
 
     function isValidStudent(data) {
@@ -121,6 +129,12 @@ service cloud.firestore {
     match /teachers/{teacherId} {
       allow read: if isAuthenticated();
       allow create, update: if isAdmin() || (isStaff() && isValidTeacher(request.resource.data));
+      allow delete: if isAdmin();
+    }
+
+    match /expenses/{expenseId} {
+      allow read: if isStaff();
+      allow create, update: if isStaff() && isValidExpense(request.resource.data);
       allow delete: if isAdmin();
     }
 

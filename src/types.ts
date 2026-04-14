@@ -1,15 +1,21 @@
 export interface Student {
   id: string;
-  rollNo?: string;
+  rollNumber: string;
   name: string;
+  gender: string;
   fatherName: string;
-  grade: string;
-  dob?: string;
-  gender?: string;
-  contact?: string;
-  address?: string;
+  motherName: string;
+  dob: string;
+  religion: string;
+  email: string;
+  admissionDate: string;
+  grade: string; // Used as 'Class'
+  section: string;
+  address: string;
+  phone: string;
+  contact?: string; // Alias for phone for backward compatibility
+  profileImage: string;
   status: "Active" | "Withdrawn" | "Alumni";
-  admissionDate?: string;
   examResults?: {
     math: number;
     science: number;
@@ -18,6 +24,54 @@ export interface Student {
   attendanceStatus?: string;
   attendanceTime?: string;
   checkedByParent?: boolean;
+}
+
+export interface Teacher {
+  id: string;
+  name: string;
+  gender: string;
+  dob: string;
+  email: string;
+  joiningDate: string;
+  subject: string;
+  assignedClasses: string[]; // Reverted to array for compatibility
+  section: string;
+  phone: string;
+  address: string;
+  profileImage: string;
+  salary: number;
+  status: "Active" | "On Leave" | "Resigned";
+  qualification: string;
+}
+
+export interface Parent {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  address: string;
+  profileImage: string;
+  linkedChildren: {
+    id: string;
+    name: string;
+    class: string;
+    section: string;
+    rollNumber: string;
+  }[];
+}
+
+export interface ManagementProfile {
+  id: string;
+  name: string;
+  gender: string;
+  dob: string;
+  joiningDate: string;
+  role: string;
+  email: string;
+  phone: string;
+  address: string;
+  officeDetails: string;
+  profileImage: string;
 }
 
 export interface FeeRecord {
@@ -31,15 +85,12 @@ export interface FeeRecord {
   method: string;
 }
 
-export interface Teacher {
+export interface Expense {
   id: string;
-  name: string;
-  email: string;
-  phone: string;
-  subject: string;
-  qualification: string;
-  joiningDate: string;
-  salary: number;
-  status: "Active" | "On Leave" | "Resigned";
-  assignedClasses: string[];
+  title: string;
+  category: "Utilities" | "Maintenance" | "Supplies" | "Events" | "Other";
+  amount: number;
+  date: string;
+  description: string;
+  status: "Pending" | "Approved" | "Paid";
 }

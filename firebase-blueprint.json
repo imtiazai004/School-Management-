@@ -96,6 +96,32 @@
         "read": { "type": "boolean" }
       },
       "required": ["type", "title", "message", "timestamp", "read"]
+    },
+    "Expense": {
+      "title": "Expense",
+      "description": "Institutional expenditure record.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "category": { "type": "string", "enum": ["Utilities", "Maintenance", "Supplies", "Events", "Other"] },
+        "amount": { "type": "number" },
+        "date": { "type": "string" },
+        "description": { "type": "string" },
+        "status": { "type": "string", "enum": ["Pending", "Approved", "Paid"] }
+      },
+      "required": ["title", "category", "amount", "date", "status"]
+    },
+    "User": {
+      "title": "User",
+      "description": "User profile and role information.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string" },
+        "profile": { "type": "object" }
+      },
+      "required": ["uid", "email", "role"]
     }
   },
   "firestore": {
@@ -110,6 +136,14 @@
     "/teachers/{teacherId}": {
       "schema": "Teacher",
       "description": "Collection of all teachers in the school."
+    },
+    "/expenses/{expenseId}": {
+      "schema": "Expense",
+      "description": "Collection of all institutional expenses."
+    },
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Collection of user profiles and roles."
     },
     "/schools/{schoolId}": {
       "schema": "School",

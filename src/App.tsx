@@ -41,12 +41,17 @@ import {
 } from "@/components/ui/dialog";
 import { useState, useEffect, ReactNode } from "react";
 import React from "react";
-import { Student, FeeRecord, Teacher } from "./types";
+import { Student, FeeRecord, Teacher, Expense } from "./types";
 import { db, auth, handleFirestoreError, OperationType } from "./lib/firebase";
-import { collection, onSnapshot, query, orderBy, setDoc, doc } from "firebase/firestore";
+import { collection, onSnapshot, query, orderBy, setDoc, doc, getDoc } from "firebase/firestore";
 import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from "firebase/auth";
 import { LandingPage } from "./components/LandingPage";
+import { StudentManagementPage } from "./components/StudentManagementPage";
+import { FinanceManagementPage } from "./components/FinanceManagementPage";
+import { FinanceSubPage } from "./components/FinanceSubPage";
 import { EnrollmentForm } from "./components/EnrollmentForm";
+import { UnifiedDashboard } from "./components/UnifiedDashboard";
+import { getMockProfile } from "./services/profileService";
 import { 
   ClassesSmartManagement, 
   FinanceManagement, 
@@ -58,7 +63,7 @@ import {
   ModulePlaceholder 
 } from "./components/Modules";
 
-type UserRole = "Headmaster" | "Vice Principal" | "Teacher" | "Clerk" | "Accountant" | "Guardian" | "Student";
+type UserRole = "Head of Institute" | "Teacher" | "Management Staff" | "Parent" | "Student" | "Headmaster" | "Vice Principal" | "Clerk" | "Accountant" | "Guardian";
 
 interface UserData {
   role: UserRole;
@@ -73,7 +78,7 @@ const features = [
     category: "Operations",
     description: "AI-driven attendance tracking with real-time guardian synchronization.",
     detailedDescription: "The Classes Smart Management utilizes advanced pattern recognition to track student and staff attendance. It automatically triggers multi-channel alerts (WhatsApp, SMS, App Push) and generates predictive absenteeism reports to help educators intervene early.",
-    allowedRoles: ["Headmaster", "Vice Principal", "Teacher"],
+    allowedRoles: ["Head of Institute", "Headmaster", "Vice Principal", "Teacher", "Management Staff"],
     isAcademic: true,
   },
   {
@@ -83,7 +88,7 @@ const features = [
     category: "Core",
     description: "Manage the entire student journey from admission to withdrawal.",
     detailedDescription: "A robust portal tailored for education. Track admissions, maintain comprehensive digital portfolios, and manage student lifecycle. Every interaction is logged, providing a 360-degree view of the student's history.",
-    allowedRoles: ["Headmaster", "Vice Principal", "Teacher"],
+    allowedRoles: ["Head of Institute", "Headmaster", "Vice Principal", "Teacher", "Student"],
     isAcademic: true,
   },
   {
@@ -93,7 +98,7 @@ const features = [
     category: "HR",
     description: "Comprehensive faculty lifecycle management for school leadership.",
     detailedDescription: "Empower school leaders with a centralized dashboard to manage the teaching staff. From onboarding new faculty and tracking qualifications to dynamic class allocation and performance monitoring, this portal ensures your human resources are optimized for academic excellence.",
-    allowedRoles: ["Headmaster", "Vice Principal"],
+    allowedRoles: ["Head of Institute", "Headmaster", "Vice Principal"],
     isAcademic: true,
   },
   {
@@ -103,7 +108,7 @@ const features = [
     category: "Academic",
     description: "Secure exam scheduling, paper generation, and automated grading.",
     detailedDescription: "Simplify the examination lifecycle. From generating randomized question papers to managing secure online assessments and automated OMR grading, the center ensures integrity and efficiency in evaluations.",
-    allowedRoles: ["Headmaster", "Vice Principal", "Teacher"],
+    allowedRoles: ["Head of Institute", "Headmaster", "Vice Principal", "Teacher"],
     isAcademic: true,
   },
   {
@@ -113,7 +118,7 @@ const features = [
     category: "Finance",
     description: "Real-time financial health dashboard with revenue and expense tracking.",
     detailedDescription: "Get a high-level view of your institution's financial status. Monitor total revenue, outstanding fees, and operating costs through interactive charts and real-time metrics.",
-    allowedRoles: ["Headmaster", "Vice Principal", "Clerk", "Accountant"],
+    allowedRoles: ["Head of Institute", "Headmaster", "Vice Principal", "Clerk", "Accountant", "Management Staff"],
     isFinance: true,
   },
   {
@@ -123,7 +128,7 @@ const features = [
     category: "Finance",
     description: "Complete fee lifecycle management from structure setup to collection.",
     detailedDescription: "Manage every aspect of student fees. Define grade-wise fee structures, record collections with multiple payment methods, and track defaulters with automated reminder systems.",
-    allowedRoles: ["Headmaster", "Teacher", "Accountant"],
+    allowedRoles: ["Head of Institute", "Headmaster", "Teacher", "Accountant", "Management Staff", "Student"],
     isFinance: true,
   },
   {
@@ -133,7 +138,7 @@ const features = [
     category: "Finance",
     description: "Automated payroll processing and salary history tracking.",
     detailedDescription: "Streamline staff payments with a robust salary management system. Define pay scales, manage global deductions, and track monthly and yearly salary expenditures with ease.",
-    allowedRoles: ["Headmaster", "Vice Principal", "Clerk", "Accountant"],
+    allowedRoles: ["Head of Institute", "Headmaster", "Vice Principal", "Clerk", "Accountant", "Management Staff"],
     isFinance: true,
   },
   {
@@ -143,7 +148,7 @@ const features = [
     category: "Academic",
     description: "Deep-dive analytics into student progress with bilingual reporting.",
     detailedDescription: "Transform raw marks into meaningful growth charts. Our analytics engine compares student performance across terms and subjects, providing teachers with actionable insights to personalize learning paths for every student.",
-    allowedRoles: ["Headmaster", "Vice Principal", "Teacher", "Guardian", "Student"],
+    allowedRoles: ["Head of Institute", "Headmaster", "Vice Principal", "Teacher", "Guardian", "Parent", "Student"],
   },
   {
     icon: UserRound,
@@ -152,7 +157,7 @@ const features = [
     category: "Communication",
     description: "A centralized portal for seamless school-to-home collaboration.",
     detailedDescription: "Bridge the gap between school and home. The Hub allows parents to monitor their child's academic journey, pay fees, and communicate directly with faculty, fostering a collaborative environment for student success.",
-    allowedRoles: ["Headmaster", "Vice Principal", "Guardian"],
+    allowedRoles: ["Head of Institute", "Headmaster", "Vice Principal", "Guardian", "Parent"],
   },
   {
     icon: Lightbulb,
@@ -161,7 +166,7 @@ const features = [
     category: "Analytics",
     description: "AI-powered forecasting for institutional growth and student success.",
     detailedDescription: "Leverage the power of machine learning to forecast enrollment trends, financial health, and academic outcomes. The dashboard provides strategic insights that help school leaders make proactive, data-driven decisions.",
-    allowedRoles: ["Headmaster", "Vice Principal"],
+    allowedRoles: ["Head of Institute", "Headmaster", "Vice Principal"],
   },
   {
     icon: User,
@@ -170,7 +175,7 @@ const features = [
     category: "HR",
     description: "Optimize staff allocation and professional development tracking.",
     detailedDescription: "Streamline HR operations with automated scheduling, leave management, and performance appraisal workflows. The planner ensures that your faculty is utilized effectively while tracking their professional growth milestones.",
-    allowedRoles: ["Headmaster", "Vice Principal", "Clerk"],
+    allowedRoles: ["Head of Institute", "Headmaster", "Vice Principal", "Clerk", "Management Staff"],
   },
   {
     icon: Building2,
@@ -179,7 +184,7 @@ const features = [
     category: "Enterprise",
     description: "Unified control for multi-campus school networks and franchises.",
     detailedDescription: "Designed for scale. The Orchestrator provides a bird's-eye view of all branches, allowing for standardized curriculum delivery, centralized financial control, and cross-campus performance benchmarking.",
-    allowedRoles: ["Headmaster"],
+    allowedRoles: ["Head of Institute", "Headmaster"],
   },
   {
     icon: Package,
@@ -188,7 +193,7 @@ const features = [
     category: "Management",
     description: "Real-time tracking of school property, from furniture to lab equipment.",
     detailedDescription: "Maintain a digital ledger of all school assets. Track depreciation, manage procurement requests, and ensure that every piece of equipment is accounted for across all departments and branches.",
-    allowedRoles: ["Headmaster", "Vice Principal", "Clerk"],
+    allowedRoles: ["Head of Institute", "Headmaster", "Vice Principal", "Clerk", "Management Staff"],
   },
   {
     icon: Truck,
@@ -197,7 +202,7 @@ const features = [
     category: "Management",
     description: "GPS-enabled fleet management with automated route optimization.",
     detailedDescription: "Ensure student safety with real-time bus tracking. Parents get proximity alerts, while administrators can optimize routes to reduce fuel costs and monitor driver behavior for enhanced safety.",
-    allowedRoles: ["Headmaster", "Vice Principal", "Clerk"],
+    allowedRoles: ["Head of Institute", "Headmaster", "Vice Principal", "Clerk", "Management Staff"],
   },
   {
     icon: BookOpen,
@@ -206,7 +211,7 @@ const features = [
     category: "Management",
     description: "Modernized cataloging with digital lending and resource tracking.",
     detailedDescription: "Transform your library into a digital hub. Manage physical book circulation with barcode scanning and provide students with access to a curated digital library of e-books and research papers.",
-    allowedRoles: ["Headmaster", "Vice Principal", "Teacher", "Student"],
+    allowedRoles: ["Head of Institute", "Headmaster", "Vice Principal", "Teacher", "Student"],
   },
 ];
 
@@ -249,30 +254,93 @@ const HeaderTooltip = ({ text, children }: { text: string; children: ReactNode }
 };
 
 export default function App() {
+  const [currentPage, setCurrentPage] = useState<
+    "landing" | 
+    "student-management" | 
+    "finance-management" |
+    "finance-overview" |
+    "finance-fees" |
+    "finance-salary" |
+    "finance-expenses"
+  >("landing");
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authType, setAuthType] = useState<"login" | "signup">("login");
   const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [userRole, setUserRole] = useState<UserRole>("Headmaster");
+  const [isDemo, setIsDemo] = useState(false);
+  const [demoExpiration, setDemoExpiration] = useState<string | null>(null);
+  const [userRole, setUserRole] = useState<UserRole>("Head of Institute");
   const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [userProfile, setUserProfile] = useState<any>(null);
 
   // Firebase Auth Listener
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
+    // Check for existing demo session
+    const storedDemoExp = localStorage.getItem("demo_expiration");
+    if (storedDemoExp) {
+      const expDate = new Date(storedDemoExp);
+      if (expDate > new Date()) {
+        setIsDemo(true);
+        setIsLoggedIn(true);
+        setDemoExpiration(storedDemoExp);
+        const storedRole = localStorage.getItem("demo_role") as UserRole;
+        if (storedRole) {
+          setUserRole(storedRole);
+          setUserProfile(getMockProfile(storedRole, "demo@school.edu"));
+        }
+      } else {
+        localStorage.removeItem("demo_expiration");
+        localStorage.removeItem("demo_role");
+      }
+    }
+
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
+        setIsDemo(false);
         setIsLoggedIn(true);
         setUserEmail(user.email);
-        // Default role for admin email, others might need onboarding
-        if (user.email === "imtiazai004@gmail.com") {
-          setUserRole("Headmaster");
+        
+        // Fetch user profile from Firestore
+        try {
+          const userDoc = await getDoc(doc(db, "users", user.uid));
+          if (userDoc.exists()) {
+            const userData = userDoc.data();
+            setUserRole(userData.role);
+            setUserProfile(userData.profile);
+          } else {
+            // If new user, set default role or check admin email
+            let role: UserRole = "Student";
+            if (user.email === "imtiazai004@gmail.com") {
+              role = "Head of Institute";
+            }
+            const profile = getMockProfile(role, user.email);
+            setUserRole(role);
+            setUserProfile(profile);
+            
+            // Save to Firestore for future
+            await setDoc(doc(db, "users", user.uid), {
+              uid: user.uid,
+              email: user.email,
+              role: role,
+              profile: profile
+            });
+          }
+        } catch (error) {
+          console.error("Error fetching user profile:", error);
+          // Fallback to mock for admin
+          if (user.email === "imtiazai004@gmail.com") {
+            setUserRole("Head of Institute");
+            setUserProfile(getMockProfile("Head of Institute", user.email));
+          }
         }
       } else {
         setIsLoggedIn(false);
         setUserEmail(null);
+        setUserProfile(null);
       }
     });
     return () => unsubscribe();
   }, []);
-  const [activeModule, setActiveModule] = useState<string | null>(null);
+  const [activeModule, setActiveModule] = useState<string | null>("Dashboard");
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isAcademicsExpanded, setIsAcademicsExpanded] = useState(true);
   const [isFinanceExpanded, setIsFinanceExpanded] = useState(true);
@@ -300,6 +368,7 @@ export default function App() {
   const [students, setStudents] = useState<Student[]>([]);
   const [fees, setFees] = useState<FeeRecord[]>([]);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
 
   // Firestore Listeners
   useEffect(() => {
@@ -338,12 +407,59 @@ export default function App() {
       handleFirestoreError(error, OperationType.LIST, "teachers");
     });
 
+    const expensesQuery = query(collection(db, "expenses"), orderBy("date", "desc"));
+    const unsubscribeExpenses = onSnapshot(expensesQuery, (snapshot) => {
+      const expensesData = snapshot.docs.map(doc => ({
+        id: doc.id as any,
+        ...doc.data()
+      })) as Expense[];
+      setExpenses(expensesData);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, "expenses");
+    });
+
     return () => {
       unsubscribeStudents();
       unsubscribeFees();
       unsubscribeTeachers();
+      unsubscribeExpenses();
     };
   }, [isLoggedIn]);
+
+  const handleDemoLogin = (role: UserRole) => {
+    const expiration = new Date();
+    expiration.setDate(expiration.getDate() + 7);
+    const expStr = expiration.toISOString();
+    
+    localStorage.setItem("demo_expiration", expStr);
+    localStorage.setItem("demo_role", role);
+    
+    setIsDemo(true);
+    setDemoExpiration(expStr);
+    setUserRole(role);
+    setUserProfile(getMockProfile(role, "demo@school.edu"));
+    setIsLoggedIn(true);
+    setIsAuthModalOpen(false);
+    setActiveModule("Dashboard");
+  };
+
+  const handleLogout = async () => {
+    try {
+      if (isDemo) {
+        localStorage.removeItem("demo_expiration");
+        localStorage.removeItem("demo_role");
+        setIsDemo(false);
+        setIsLoggedIn(false);
+      } else {
+        await signOut(auth);
+        setIsLoggedIn(false);
+      }
+      setActiveModule(null);
+      setCurrentPage("landing");
+    } catch (error) {
+      console.error("Logout Error:", error);
+    }
+  };
 
   const [notifications] = useState([
     { id: 1, title: "New Admission", message: "Zaid Khan registered for Grade 10-A", time: "2m ago", read: false },
@@ -367,57 +483,73 @@ export default function App() {
     try {
       const result = await signInWithPopup(auth, provider);
       const user = result.user;
+      setIsDemo(false);
+      localStorage.removeItem("demo_expiration");
+      localStorage.removeItem("demo_role");
       
-      // Save user role to Firestore
+      let profile = null;
+      // Check if profile exists
       try {
+        const userDoc = await getDoc(doc(db, "users", user.uid));
+        if (userDoc.exists()) {
+          const userData = userDoc.data();
+          // If role matches, use existing profile, otherwise update role and get new mock profile
+          if (userData.role === role) {
+            profile = userData.profile;
+          } else {
+            profile = getMockProfile(role, user.email);
+          }
+        } else {
+          profile = getMockProfile(role, user.email);
+        }
+
         await setDoc(doc(db, "users", user.uid), {
+          uid: user.uid,
           email: user.email,
           role: role,
+          profile: profile,
           lastLogin: new Date().toISOString()
         }, { merge: true });
       } catch (error) {
         handleFirestoreError(error, OperationType.WRITE, `users/${user.uid}`);
+        profile = getMockProfile(role, user.email);
       }
 
       setUserRole(role);
       setUserEmail(user.email);
+      setUserProfile(profile);
       setIsLoggedIn(true);
       setIsAuthModalOpen(false);
       
-      const firstAllowed = features.find(f => f.allowedRoles.includes(role));
-      setActiveModule(pendingModule || (firstAllowed ? firstAllowed.title : null));
+      if (role === "Management Staff") {
+        setActiveModule("Finance Overview");
+      } else {
+        setActiveModule(pendingModule || "Dashboard");
+      }
       setPendingModule(null);
     } catch (error) {
       console.error("Auth Error:", error);
     }
   };
 
-  const handleLogout = async () => {
-    try {
-      await signOut(auth);
-      setIsLoggedIn(false);
-      setActiveModule(null);
-    } catch (error) {
-      console.error("Logout Error:", error);
-    }
-  };
-
   const renderModule = () => {
     switch (activeModule) {
+      case "Dashboard":
+        return <UnifiedDashboard userRole={userRole} profile={userProfile} onNavigate={setActiveModule} />;
       case "Classes Smart Management":
         return <ClassesSmartManagement userRole={userRole} students={students} />;
       case "Finance Overview":
-        return <FinanceManagement userRole={userRole} initialTab="overview" students={students} fees={fees} />;
+        return <FinanceManagement userRole={userRole} userProfile={userProfile} initialTab="overview" students={students} fees={fees} expenses={expenses} />;
       case "Fee Management":
-        return <FinanceManagement userRole={userRole} initialTab="fees" students={students} fees={fees} />;
+        return <FinanceManagement userRole={userRole} userProfile={userProfile} initialTab="fees" students={students} fees={fees} expenses={expenses} />;
       case "Salary Management":
-        return <FinanceManagement userRole={userRole} initialTab="salaries" students={students} fees={fees} />;
+        return <FinanceManagement userRole={userRole} userProfile={userProfile} initialTab="salaries" students={students} fees={fees} expenses={expenses} />;
       case "Academic Performance Analytics":
         return <AcademicAnalytics userRole={userRole} students={students} />;
       case "Guardian Engagement Hub":
         return <GuardianEngagementHub userRole={userRole} students={students} />;
       case "Student Management Portal":
-        return <StudentManagementPortal userRole={userRole} userEmail={userEmail} students={students} />;
+        return <StudentManagementPortal userRole={userRole} userEmail={userEmail} userProfile={userProfile} students={students} />;
       case "Teacher Management Portal":
         return <TeacherManagementPortal userRole={userRole} teachers={teachers} />;
       case "Examination & Assessment Center":
@@ -429,8 +561,28 @@ export default function App() {
 
   if (isLoggedIn) {
     return (
-      <div className="min-h-screen bg-[#f8fafc] flex">
-        {/* Sidebar */}
+      <div className="min-h-screen bg-[#f8fafc] flex flex-col">
+        {isDemo && (
+          <div className="bg-amber-500 text-white px-6 py-2 flex items-center justify-between text-xs font-black uppercase tracking-[0.2em] shrink-0">
+            <div className="flex items-center gap-4">
+              <Zap className="w-4 h-4" />
+              <span>Demo Mode Active • Access Expires in {demoExpiration ? Math.ceil((new Date(demoExpiration).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)) : 7} Days</span>
+            </div>
+            <button 
+              onClick={() => {
+                setIsDemo(false);
+                setIsLoggedIn(false);
+                setAuthType("signup");
+                setIsAuthModalOpen(true);
+              }}
+              className="bg-white text-amber-600 px-4 py-1 rounded-full hover:bg-amber-50 transition-colors"
+            >
+              Request Full Access
+            </button>
+          </div>
+        )}
+        <div className="flex flex-1 overflow-hidden">
+          {/* Sidebar */}
         <motion.aside 
           initial={false}
           animate={{ width: isSidebarOpen ? 320 : 80 }}
@@ -452,6 +604,19 @@ export default function App() {
           </div>
 
           <div className="flex-1 px-4 py-6 space-y-2 overflow-y-auto">
+            {/* Dashboard Link */}
+            <button
+              onClick={() => setActiveModule("Dashboard")}
+              className={`w-full flex items-center gap-3 p-3 rounded-xl font-bold transition-all ${
+                activeModule === "Dashboard" 
+                  ? "bg-indigo-600 text-white shadow-lg shadow-indigo-100" 
+                  : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+              }`}
+            >
+              <LayoutDashboard className={`w-5 h-5 ${activeModule === "Dashboard" ? "text-white" : "text-slate-400"}`} />
+              {isSidebarOpen && <span className="text-sm truncate">Dashboard</span>}
+            </button>
+
             {/* Academics Group */}
             {academicFeatures.length > 0 && (
               <div className="space-y-1">
@@ -974,20 +1139,78 @@ export default function App() {
           </Dialog>
         </main>
       </div>
+    </div>
+  );
+}
+
+  if (currentPage === "student-management") {
+    return (
+      <StudentManagementPage 
+        onBack={() => setCurrentPage("landing")} 
+        onEnroll={() => {
+          setAuthType("signup");
+          setIsAuthModalOpen(true);
+        }} 
+      />
+    );
+  }
+
+  if (currentPage === "finance-management") {
+    return (
+      <FinanceManagementPage 
+        onBack={() => setCurrentPage("landing")} 
+        onEnroll={() => {
+          setAuthType("signup");
+          setIsAuthModalOpen(true);
+        }} 
+        onNavigateToSubFeature={(feature) => {
+          if (feature === "overview") setCurrentPage("finance-overview");
+          if (feature === "fees") setCurrentPage("finance-fees");
+          if (feature === "salary") setCurrentPage("finance-salary");
+          if (feature === "expenses") setCurrentPage("finance-expenses");
+        }}
+      />
+    );
+  }
+
+  if (currentPage.startsWith("finance-") && currentPage !== "finance-management") {
+    const subPageTitles: Record<string, { title: string, desc: string }> = {
+      "finance-overview": { title: "Finance Overview", desc: "Real-time financial insights and strategic summaries of your institution's health." },
+      "finance-fees": { title: "Fee Management", desc: "Automate fee collection, tracking, and digital receipt generation for your school." },
+      "finance-salary": { title: "Salary Management", desc: "Efficiently manage staff salaries, payroll processing, and payment history." },
+      "finance-expenses": { title: "Expense Management", desc: "Track school expenditures and maintain strict budget control across all departments." },
+    };
+    const { title, desc } = subPageTitles[currentPage] || { title: "Finance Module", desc: "Advanced financial tools for your school." };
+    
+    return (
+      <FinanceSubPage 
+        title={title}
+        description={desc}
+        onBack={() => setCurrentPage("finance-management")}
+        onEnroll={() => {
+          setAuthType("signup");
+          setIsAuthModalOpen(true);
+        }}
+      />
     );
   }
 
   return (
     <>
-      <LandingPage onLogin={() => {
-        setAuthType("login");
-        setIsAuthModalOpen(true);
-      }} />
+      <LandingPage 
+        onLogin={() => {
+          setAuthType("login");
+          setIsAuthModalOpen(true);
+        }} 
+        onNavigateToStudentManagement={() => setCurrentPage("student-management")}
+        onNavigateToFinanceManagement={() => setCurrentPage("finance-management")}
+      />
       <Dialog open={isAuthModalOpen} onOpenChange={setIsAuthModalOpen}>
         <DialogContent className="sm:max-w-[450px] p-0 overflow-hidden rounded-[2.5rem] border-none shadow-2xl">
           <AuthForm 
             type={authType} 
             onLogin={handleLogin} 
+            onDemoLogin={handleDemoLogin}
             onSwitch={() => setAuthType(authType === "login" ? "signup" : "login")} 
           />
         </DialogContent>
@@ -996,23 +1219,24 @@ export default function App() {
   );
 }
 
-const AuthForm = ({ type, onLogin, onSwitch }: { type: "login" | "signup", onLogin: (role: UserRole, email?: string) => void, onSwitch: () => void }) => {
+const AuthForm = ({ type, onLogin, onDemoLogin, onSwitch }: { type: "login" | "signup", onLogin: (role: UserRole, email?: string) => void, onDemoLogin: (role: UserRole) => void, onSwitch: () => void }) => {
   const [selectedRole, setSelectedRole] = useState<UserRole>("Headmaster");
   const [identifier, setIdentifier] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showDemoOptions, setShowDemoOptions] = useState(false);
 
-  const roles: UserRole[] = ["Headmaster", "Vice Principal", "Teacher", "Clerk", "Accountant", "Guardian", "Student"];
+  const roles: UserRole[] = ["Head of Institute", "Teacher", "Management Staff", "Parent", "Student"];
 
   const getPlaceholder = () => {
     if (selectedRole === "Student") return "Class ID (e.g. 10-A-001)";
-    if (["Headmaster", "Vice Principal", "Teacher", "Clerk", "Accountant"].includes(selectedRole)) return "CNIC (e.g. 35202-xxxxxxx-x)";
+    if (["Head of Institute", "Teacher", "Management Staff", "Headmaster", "Vice Principal", "Clerk", "Accountant"].includes(selectedRole)) return "CNIC (e.g. 35202-xxxxxxx-x)";
     return "Phone Number";
   };
 
   const getPasswordPlaceholder = () => {
     if (selectedRole === "Student") return "Class ID as Password";
-    if (["Headmaster", "Vice Principal", "Teacher", "Clerk", "Accountant"].includes(selectedRole)) return "CNIC as Password";
+    if (["Head of Institute", "Teacher", "Management Staff", "Headmaster", "Vice Principal", "Clerk", "Accountant"].includes(selectedRole)) return "CNIC as Password";
     return "Password";
   };
 
@@ -1085,14 +1309,60 @@ const AuthForm = ({ type, onLogin, onSwitch }: { type: "login" | "signup", onLog
           <UserCheck className="w-5 h-5" />
           {type === "login" ? "Authorize Access" : "Create Account"}
         </Button>
-        <div className="text-center">
+        <div className="text-center space-y-4">
           <button 
             type="button"
             onClick={onSwitch}
-            className="text-sm font-bold text-slate-400 hover:text-indigo-600 transition-colors"
+            className="text-sm font-bold text-slate-400 hover:text-indigo-600 transition-colors block w-full"
           >
             {type === "login" ? "Don't have an account? Sign up" : "Already have an account? Login"}
           </button>
+          
+          <div className="relative py-4">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-slate-100"></div>
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-white px-4 text-slate-400 font-black tracking-widest">Or</span>
+            </div>
+          </div>
+
+          {!showDemoOptions ? (
+            <button 
+              type="button"
+              onClick={() => setShowDemoOptions(true)}
+              className="w-full h-14 rounded-2xl border-2 border-slate-100 text-slate-600 font-black hover:bg-slate-50 transition-all flex items-center justify-center gap-3"
+            >
+              <Zap className="w-5 h-5 text-amber-500" />
+              Try Demo Access
+            </button>
+          ) : (
+            <div className="space-y-4 animate-in fade-in slide-in-from-top-4 duration-300">
+              <div className="p-4 rounded-2xl bg-amber-50 border border-amber-100 text-left">
+                <p className="text-[10px] font-black text-amber-600 uppercase tracking-widest mb-1">Demo Instructions</p>
+                <p className="text-xs font-bold text-amber-700 leading-relaxed">
+                  Explore the system as any role. No authorization required. Demo access expires in 7 days.
+                </p>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                {roles.map(role => (
+                  <button
+                    key={role}
+                    onClick={() => onDemoLogin(role)}
+                    className="h-12 rounded-xl bg-slate-50 hover:bg-indigo-50 hover:text-indigo-600 border border-slate-100 text-[10px] font-black uppercase tracking-widest transition-all"
+                  >
+                    {role}
+                  </button>
+                ))}
+              </div>
+              <button 
+                onClick={() => setShowDemoOptions(false)}
+                className="text-xs font-bold text-slate-400 hover:text-slate-600"
+              >
+                Back to Actual Login
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>
