@@ -1,0 +1,144 @@
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// Collection: students
+// Document ID: auto-generated
+// Fields:
+//   - id: number
+//   - rollNo: string
+//   - name: string (required)
+//   - fatherName: string (required)
+//   - grade: string (required)
+//   - dob: string
+//   - gender: string
+//   - contact: string
+//   - address: string
+//   - status: string (Active, Withdrawn, Alumni) (required)
+//   - admissionDate: string
+//   - examResults: map
+//   - attendanceStatus: string
+//   - attendanceTime: string
+//   - checkedByParent: boolean
+//
+// Collection: fees
+// Document ID: auto-generated
+// Fields:
+//   - id: number
+//   - student: string (required)
+//   - rollNo: string
+//   - grade: string (required)
+//   - amount: number (required)
+//   - date: string (required)
+//   - status: string (Paid, Unpaid) (required)
+//   - method: string
+//
+// ===============================================================
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && 
+        (request.auth.token.email == "imtiazai004@gmail.com" ||
+         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'Headmaster'));
+    }
+
+    function isStaff() {
+      return isAuthenticated() && 
+        (isAdmin() || 
+         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['Teacher', 'Clerk', 'Accountant']));
+    }
+
+    function isValidStudent(data) {
+      return data.keys().hasAll(['name', 'fatherName', 'grade', 'status']) &&
+             data.name is string && data.name.size() > 0 &&
+             data.fatherName is string && data.fatherName.size() > 0 &&
+             data.grade is string &&
+             data.status in ['Active', 'Withdrawn', 'Alumni'];
+    }
+
+    function isValidFee(data) {
+      return data.keys().hasAll(['student', 'grade', 'amount', 'date', 'status']) &&
+             data.student is string &&
+             data.grade is string &&
+             data.amount is number &&
+             data.date is string &&
+             data.status in ['Paid', 'Unpaid'];
+    }
+
+    function isValidTeacher(data) {
+      return data.keys().hasAll(['name', 'email', 'subject', 'status']) &&
+             data.name is string &&
+             data.email is string &&
+             data.subject is string &&
+             data.status in ['Active', 'On Leave', 'Resigned'];
+    }
+
+    function isValidSchool(data) {
+      return data.keys().hasAll(['name', 'boardId', 'principalEmail', 'status']) &&
+             data.name is string && data.name.size() > 0 &&
+             data.boardId is string && data.boardId.size() > 0 &&
+             data.principalEmail is string &&
+             data.status in ['pending', 'approved', 'rejected'];
+    }
+
+    function isValidNotification(data) {
+      return data.keys().hasAll(['type', 'title', 'message', 'timestamp', 'read']) &&
+             data.type is string &&
+             data.title is string &&
+             data.message is string &&
+             data.read is bool;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /students/{studentId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAdmin() || (isStaff() && isValidStudent(request.resource.data));
+      allow delete: if isAdmin();
+    }
+
+    match /fees/{feeId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAdmin() || (isStaff() && isValidFee(request.resource.data));
+      allow delete: if isAdmin();
+    }
+
+    match /teachers/{teacherId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAdmin() || (isStaff() && isValidTeacher(request.resource.data));
+      allow delete: if isAdmin();
+    }
+
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow write: if request.auth.uid == userId || isAdmin();
+    }
+
+    match /schools/{schoolId} {
+      allow read: if isAdmin();
+      allow create: if isValidSchool(request.resource.data);
+      allow update, delete: if isAdmin();
+    }
+
+    match /notifications/{notificationId} {
+      allow read: if isAdmin();
+      allow create: if isValidNotification(request.resource.data);
+      allow update, delete: if isAdmin();
+    }
+  }
+}

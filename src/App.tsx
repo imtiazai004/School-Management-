@@ -41,7 +41,12 @@ import {
 } from "@/components/ui/dialog";
 import { useState, useEffect, ReactNode } from "react";
 import React from "react";
-import { Student, FeeRecord } from "./types";
+import { Student, FeeRecord, Teacher } from "./types";
+import { db, auth, handleFirestoreError, OperationType } from "./lib/firebase";
+import { collection, onSnapshot, query, orderBy, setDoc, doc } from "firebase/firestore";
+import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from "firebase/auth";
+import { LandingPage } from "./components/LandingPage";
+import { EnrollmentForm } from "./components/EnrollmentForm";
 import { 
   ClassesSmartManagement, 
   FinanceManagement, 
@@ -248,7 +253,25 @@ export default function App() {
   const [authType, setAuthType] = useState<"login" | "signup">("login");
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userRole, setUserRole] = useState<UserRole>("Headmaster");
-  const [userEmail, setUserEmail] = useState<string>("");
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+
+  // Firebase Auth Listener
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        setIsLoggedIn(true);
+        setUserEmail(user.email);
+        // Default role for admin email, others might need onboarding
+        if (user.email === "imtiazai004@gmail.com") {
+          setUserRole("Headmaster");
+        }
+      } else {
+        setIsLoggedIn(false);
+        setUserEmail(null);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
   const [activeModule, setActiveModule] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isAcademicsExpanded, setIsAcademicsExpanded] = useState(true);
@@ -274,20 +297,53 @@ export default function App() {
   const [toast, setToast] = useState<{ message: string; type: "success" | "info" } | null>(null);
 
   // Global Data States
-  const [students, setStudents] = useState<Student[]>([
-    { id: 1, rollNo: "10A-001", name: "Ahmad Hassan", fatherName: "Hassan Ali", grade: "Grade 10-A", dob: "2010-05-15", gender: "Male", contact: "0300-1234567", address: "House 123, Street 4, Lahore", status: "Active", admissionDate: "2022-04-01", examResults: { math: 85, science: 92, english: 78 }, attendanceStatus: "present", attendanceTime: "08:15 AM" },
-    { id: 2, rollNo: "10A-002", name: "Sara Khan", fatherName: "Imran Khan", grade: "Grade 10-A", dob: "2010-08-22", gender: "Female", contact: "0321-7654321", address: "Flat 45, Model Town, Lahore", status: "Active", admissionDate: "2022-04-01", examResults: { math: 72, science: 68, english: 85 }, attendanceStatus: "absent", attendanceTime: "-" },
-    { id: 3, rollNo: "10A-003", name: "Zainab Ali", fatherName: "Ali Raza", grade: "Grade 10-A", dob: "2011-01-10", gender: "Female", contact: "0333-9876543", address: "Sector C, DHA, Lahore", status: "Active", admissionDate: "2022-04-01", examResults: { math: 95, science: 88, english: 92 }, attendanceStatus: "present", attendanceTime: "08:20 AM" },
-    { id: 4, rollNo: "10A-004", name: "Bilal Ahmed", fatherName: "Ahmed Shah", grade: "Grade 10-A", dob: "2010-11-30", gender: "Male", contact: "0345-1122334", address: "Johar Town, Lahore", status: "Active", admissionDate: "2022-04-01", examResults: { math: 65, science: 70, english: 60 }, attendanceStatus: "late", attendanceTime: "08:45 AM" },
-    { id: 5, rollNo: "10A-005", name: "Fatima Noor", fatherName: "Noor Muhammad", grade: "Grade 10-A", dob: "2011-03-05", gender: "Female", contact: "0300-5566778", address: "Gulberg III, Lahore", status: "Active", admissionDate: "2022-04-01", examResults: { math: 88, science: 85, english: 80 }, attendanceStatus: "present", attendanceTime: "08:10 AM" },
-    { id: 6, rollNo: "10B-001", name: "John Doe", fatherName: "Richard Doe", grade: "Grade 10-B", dob: "2010-02-14", gender: "Male", contact: "0312-9988776", address: "Wapda Town, Lahore", status: "Active", admissionDate: "2022-04-01", examResults: { math: 80, science: 75, english: 70 }, attendanceStatus: "present", attendanceTime: "08:05 AM" },
-  ]);
+  const [students, setStudents] = useState<Student[]>([]);
+  const [fees, setFees] = useState<FeeRecord[]>([]);
+  const [teachers, setTeachers] = useState<Teacher[]>([]);
 
-  const [fees, setFees] = useState<FeeRecord[]>([
-    { id: 1, student: "Ahmad Hassan", rollNo: "10A-001", grade: "Grade 10-A", amount: 15000, date: "2023-10-12", status: "Paid", method: "Bank Transfer" },
-    { id: 2, student: "Sara Khan", rollNo: "10A-002", grade: "Grade 10-A", amount: 15000, date: "2023-10-11", status: "Paid", method: "Cash" },
-    { id: 3, student: "Zainab Ali", rollNo: "10A-003", grade: "Grade 10-A", amount: 15000, date: "-", status: "Unpaid", method: "-" },
-  ]);
+  // Firestore Listeners
+  useEffect(() => {
+    if (!isLoggedIn) return;
+
+    const studentsQuery = query(collection(db, "students"), orderBy("name", "asc"));
+    const unsubscribeStudents = onSnapshot(studentsQuery, (snapshot) => {
+      const studentsData = snapshot.docs.map(doc => ({
+        id: doc.id as any,
+        ...doc.data()
+      })) as Student[];
+      setStudents(studentsData);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, "students");
+    });
+
+    const feesQuery = query(collection(db, "fees"), orderBy("date", "desc"));
+    const unsubscribeFees = onSnapshot(feesQuery, (snapshot) => {
+      const feesData = snapshot.docs.map(doc => ({
+        id: doc.id as any,
+        ...doc.data()
+      })) as FeeRecord[];
+      setFees(feesData);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, "fees");
+    });
+
+    const teachersQuery = query(collection(db, "teachers"), orderBy("name", "asc"));
+    const unsubscribeTeachers = onSnapshot(teachersQuery, (snapshot) => {
+      const teachersData = snapshot.docs.map(doc => ({
+        id: doc.id as any,
+        ...doc.data()
+      })) as Teacher[];
+      setTeachers(teachersData);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, "teachers");
+    });
+
+    return () => {
+      unsubscribeStudents();
+      unsubscribeFees();
+      unsubscribeTeachers();
+    };
+  }, [isLoggedIn]);
 
   const [notifications] = useState([
     { id: 1, title: "New Admission", message: "Zaid Khan registered for Grade 10-A", time: "2m ago", read: false },
@@ -306,43 +362,66 @@ export default function App() {
     if (moduleTitle) setPendingModule(moduleTitle);
   };
 
-  const handleLogin = (role: UserRole, email?: string) => {
-    setUserRole(role);
-    if (email) setUserEmail(email);
-    setIsLoggedIn(true);
-    setIsAuthModalOpen(false);
-    
-    // Set first allowed module as active
-    const firstAllowed = features.find(f => f.allowedRoles.includes(role));
-    setActiveModule(pendingModule || (firstAllowed ? firstAllowed.title : null));
-    setPendingModule(null);
+  const handleLogin = async (role: UserRole, email?: string) => {
+    const provider = new GoogleAuthProvider();
+    try {
+      const result = await signInWithPopup(auth, provider);
+      const user = result.user;
+      
+      // Save user role to Firestore
+      try {
+        await setDoc(doc(db, "users", user.uid), {
+          email: user.email,
+          role: role,
+          lastLogin: new Date().toISOString()
+        }, { merge: true });
+      } catch (error) {
+        handleFirestoreError(error, OperationType.WRITE, `users/${user.uid}`);
+      }
+
+      setUserRole(role);
+      setUserEmail(user.email);
+      setIsLoggedIn(true);
+      setIsAuthModalOpen(false);
+      
+      const firstAllowed = features.find(f => f.allowedRoles.includes(role));
+      setActiveModule(pendingModule || (firstAllowed ? firstAllowed.title : null));
+      setPendingModule(null);
+    } catch (error) {
+      console.error("Auth Error:", error);
+    }
   };
 
-  const handleLogout = () => {
-    setIsLoggedIn(false);
-    setActiveModule(null);
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      setIsLoggedIn(false);
+      setActiveModule(null);
+    } catch (error) {
+      console.error("Logout Error:", error);
+    }
   };
 
   const renderModule = () => {
     switch (activeModule) {
       case "Classes Smart Management":
-        return <ClassesSmartManagement userRole={userRole} students={students} setStudents={setStudents} />;
+        return <ClassesSmartManagement userRole={userRole} students={students} />;
       case "Finance Overview":
-        return <FinanceManagement userRole={userRole} initialTab="overview" students={students} fees={fees} setFees={setFees} />;
+        return <FinanceManagement userRole={userRole} initialTab="overview" students={students} fees={fees} />;
       case "Fee Management":
-        return <FinanceManagement userRole={userRole} initialTab="fees" students={students} fees={fees} setFees={setFees} />;
+        return <FinanceManagement userRole={userRole} initialTab="fees" students={students} fees={fees} />;
       case "Salary Management":
-        return <FinanceManagement userRole={userRole} initialTab="salaries" students={students} fees={fees} setFees={setFees} />;
+        return <FinanceManagement userRole={userRole} initialTab="salaries" students={students} fees={fees} />;
       case "Academic Performance Analytics":
         return <AcademicAnalytics userRole={userRole} students={students} />;
       case "Guardian Engagement Hub":
-        return <GuardianEngagementHub userRole={userRole} />;
+        return <GuardianEngagementHub userRole={userRole} students={students} />;
       case "Student Management Portal":
-        return <StudentManagementPortal userRole={userRole} userEmail={userEmail} students={students} setStudents={setStudents} />;
+        return <StudentManagementPortal userRole={userRole} userEmail={userEmail} students={students} />;
       case "Teacher Management Portal":
-        return <TeacherManagementPortal userRole={userRole} />;
+        return <TeacherManagementPortal userRole={userRole} teachers={teachers} />;
       case "Examination & Assessment Center":
-        return <ExaminationAssessmentCenter userRole={userRole} students={students} setStudents={setStudents} />;
+        return <ExaminationAssessmentCenter userRole={userRole} students={students} />;
       default:
         return <ModulePlaceholder title={activeModule || "Module"} />;
     }
@@ -899,273 +978,11 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-[#fafafa] font-sans selection:bg-indigo-100 selection:text-indigo-900">
-      {/* Navigation */}
-      <nav className="fixed top-0 w-full z-50 bg-white/80 backdrop-blur-xl border-b border-slate-200/60">
-        <div className="max-w-7xl mx-auto px-6 h-24 flex items-center justify-between">
-          <motion.div 
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            className="flex items-center gap-3"
-          >
-            <div className="w-12 h-12 bg-indigo-600 rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-200 rotate-3 hover:rotate-0 transition-transform cursor-pointer">
-              <Zap className="text-white w-7 h-7" />
-            </div>
-            <div className="flex flex-col">
-              <span className="text-2xl font-black tracking-tighter text-slate-900 leading-none">Smart Education <span className="text-indigo-600">Pro</span></span>
-              <span className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Enterprise OS</span>
-            </div>
-          </motion.div>
-          
-          <div className="hidden lg:flex items-center gap-2">
-            {["Features", "Solutions", "Pricing", "About"].map((item) => (
-              <NavItem key={`nav-${item}`} label={item} />
-            ))}
-          </div>
-
-          <div className="flex items-center gap-4">
-            <Button 
-              variant="ghost" 
-              onClick={() => openAuth("login")}
-              className="hidden sm:flex rounded-2xl px-6 font-bold text-slate-600 hover:bg-slate-100"
-            >
-              Login
-            </Button>
-            <Button 
-              onClick={() => openAuth("signup")}
-              className="rounded-2xl px-8 h-12 font-bold bg-indigo-600 hover:bg-indigo-700 shadow-xl shadow-indigo-200 transition-all hover:-translate-y-1 active:translate-y-0"
-            >
-              Get Started
-            </Button>
-          </div>
-        </div>
-      </nav>
-
-      {/* Hero Section */}
-      <section className="pt-48 pb-32 px-6 relative overflow-hidden">
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-full -z-10">
-          <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] bg-indigo-200/30 blur-[150px] rounded-full animate-pulse" />
-          <div className="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] bg-blue-200/30 blur-[150px] rounded-full animate-pulse" />
-        </div>
-        
-        <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-20 items-center">
-          <motion.div 
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8 }}
-          >
-            <div className="inline-flex items-center gap-2 bg-indigo-50 text-indigo-700 px-4 py-2 rounded-2xl font-bold text-xs uppercase tracking-widest mb-8 border border-indigo-100 shadow-sm">
-              <div className="w-2 h-2 rounded-full bg-indigo-600 animate-ping" />
-              v4.0 Enterprise Release
-            </div>
-            <h1 className="text-6xl md:text-8xl font-black text-slate-900 leading-[0.9] tracking-tighter mb-10">
-              Orchestrate <br />
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 via-blue-600 to-indigo-500">Excellence.</span>
-            </h1>
-            <p className="text-xl text-slate-500 mb-12 leading-relaxed max-w-xl font-medium">
-              The world's most advanced school management ecosystem. AI-native, bilingual, and engineered for institutional scale.
-            </p>
-            <div className="flex flex-col sm:flex-row gap-6">
-              <Button 
-                size="lg" 
-                onClick={() => openAuth("signup")}
-                className="rounded-3xl px-10 h-16 text-xl font-black bg-indigo-600 hover:bg-indigo-700 shadow-2xl shadow-indigo-200 transition-all hover:-translate-y-1"
-              >
-                Deploy Now <ArrowRight className="ml-3 w-6 h-6" />
-              </Button>
-              <Button size="lg" variant="outline" className="rounded-3xl px-10 h-16 text-xl font-black border-slate-200 bg-white hover:bg-slate-50 transition-all">
-                View Architecture
-              </Button>
-            </div>
-          </motion.div>
-
-          <motion.div 
-            initial={{ opacity: 0, scale: 0.9, rotate: 2 }}
-            animate={{ opacity: 1, scale: 1, rotate: 0 }}
-            transition={{ duration: 1, delay: 0.2 }}
-            className="relative"
-          >
-            <div className="bg-white rounded-[3rem] shadow-[0_50px_100px_-20px_rgba(0,0,0,0.15)] border border-slate-200/60 overflow-hidden p-4">
-              <div className="bg-slate-900 rounded-[2.5rem] aspect-[4/3] relative overflow-hidden group">
-                <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/20 to-transparent" />
-                <div className="p-10 h-full flex flex-col justify-between relative z-10">
-                  <div className="flex justify-between items-start">
-                    <div className="space-y-2">
-                      <div className="h-2 w-24 bg-indigo-500/50 rounded-full" />
-                      <div className="h-8 w-48 bg-white rounded-xl" />
-                    </div>
-                    <div className="w-12 h-12 bg-white/10 backdrop-blur-md rounded-2xl flex items-center justify-center">
-                      <LayoutDashboard className="text-white w-6 h-6" />
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-6">
-                    <div className="bg-white/5 backdrop-blur-lg rounded-3xl p-6 border border-white/10">
-                      <p className="text-indigo-400 text-xs font-black uppercase tracking-widest mb-2">Efficiency</p>
-                      <p className="text-4xl font-black text-white">+94%</p>
-                    </div>
-                    <div className="bg-indigo-600 rounded-3xl p-6 shadow-xl shadow-indigo-900/40">
-                      <p className="text-indigo-200 text-xs font-black uppercase tracking-widest mb-2">Growth</p>
-                      <p className="text-4xl font-black text-white">2.4x</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-            
-            {/* Floating 3D elements */}
-            <motion.div 
-              animate={{ y: [0, -20, 0] }}
-              transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-              className="absolute -top-10 -right-10 bg-white p-6 rounded-[2rem] shadow-2xl border border-slate-100 flex items-center gap-4"
-            >
-              <div className="w-12 h-12 bg-emerald-500 rounded-2xl flex items-center justify-center shadow-lg shadow-emerald-200">
-                <ShieldCheck className="text-white w-7 h-7" />
-              </div>
-              <div>
-                <p className="text-xs text-slate-400 font-black uppercase tracking-widest">Security Status</p>
-                <p className="text-lg font-black text-slate-900">Hardened</p>
-              </div>
-            </motion.div>
-          </motion.div>
-        </div>
-      </section>
-
-      {/* Stats Section */}
-      <section className="py-20 bg-white border-y border-slate-200/60">
-        <div className="max-w-7xl mx-auto px-6 grid grid-cols-2 md:grid-cols-4 gap-12">
-          {[
-            { label: "Active Schools", value: "500+" },
-            { label: "Students Managed", value: "200k+" },
-            { label: "Daily Transactions", value: "50k+" },
-            { label: "Uptime Guarantee", value: "99.9%" },
-          ].map((stat, index) => (
-            <div key={`stat-${index}`} className="text-center">
-              <p className="text-4xl font-bold text-slate-900 mb-2">{stat.value}</p>
-              <p className="text-sm font-medium text-slate-500 uppercase tracking-wider">{stat.label}</p>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* Features Grid */}
-      <section className="py-40 px-6 bg-white relative">
-        <div className="max-w-7xl mx-auto">
-          <div className="flex flex-col md:flex-row justify-between items-end mb-24 gap-8">
-            <div className="max-w-2xl">
-              <Badge className="mb-4 bg-indigo-600 text-white px-4 py-1 rounded-full">Intelligence Suite</Badge>
-              <h2 className="text-5xl md:text-6xl font-black text-slate-900 tracking-tighter leading-none">
-                Next-Gen Management <br />
-                <span className="text-indigo-600">Capabilities.</span>
-              </h2>
-            </div>
-            <p className="text-lg text-slate-500 max-w-md font-medium">
-              Explore our modular ecosystem designed to handle every complexity of modern educational institutions.
-            </p>
-          </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
-            {allowedFeatures.map((feature, index) => (
-              <FeatureCard 
-                key={`feature-${index}`}
-                {...feature}
-                delay={index * 0.05}
-                onRequestAccess={(title) => {
-                  if (!isLoggedIn) {
-                    openAuth("signup", title);
-                  } else {
-                    setActiveModule(title);
-                  }
-                }}
-              />
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* CTA Section */}
-      <section className="py-32 px-6">
-        <div className="max-w-5xl mx-auto bg-indigo-600 rounded-[3rem] p-12 md:p-20 text-center text-white relative overflow-hidden shadow-2xl shadow-indigo-200">
-          <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 blur-[80px] rounded-full -mr-32 -mt-32" />
-          <div className="absolute bottom-0 left-0 w-64 h-64 bg-indigo-400/20 blur-[80px] rounded-full -ml-32 -mb-32" />
-          
-          <h2 className="text-4xl md:text-5xl font-bold mb-8 leading-tight">Ready to Modernize Your School?</h2>
-          <p className="text-xl text-indigo-100 mb-12 max-w-2xl mx-auto">
-            Join hundreds of forward-thinking institutions that have already transformed their administrative experience.
-          </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Button 
-              size="lg" 
-              onClick={() => openAuth("signup")}
-              className="rounded-full px-10 h-16 text-lg bg-white text-indigo-600 hover:bg-slate-50"
-            >
-              Get Started Now
-            </Button>
-            <Button 
-              size="lg" 
-              variant="outline" 
-              onClick={() => openAuth("login")}
-              className="rounded-full px-10 h-16 text-lg border-white/30 text-white hover:bg-white/10"
-            >
-              Talk to Sales
-            </Button>
-          </div>
-        </div>
-      </section>
-
-      {/* Footer */}
-      <footer className="py-32 bg-slate-900 text-white">
-        <div className="max-w-7xl mx-auto px-6 grid grid-cols-1 md:grid-cols-4 gap-20">
-          <div className="col-span-1 md:col-span-1">
-            <div className="flex items-center gap-3 mb-8">
-              <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center">
-                <Zap className="text-white w-6 h-6" />
-              </div>
-              <span className="text-2xl font-black tracking-tighter">PakEducate</span>
-            </div>
-            <p className="text-slate-400 font-medium leading-relaxed mb-8">
-              The definitive operating system for modern educational institutions. Engineered for excellence.
-            </p>
-            <div className="flex gap-4">
-              {[1, 2, 3, 4].map(i => (
-                <div key={`social-${i}`} className="w-10 h-10 bg-white/5 rounded-xl flex items-center justify-center hover:bg-indigo-600 transition-colors cursor-pointer">
-                  <div className="w-4 h-4 bg-white/20 rounded-full" />
-                </div>
-              ))}
-            </div>
-          </div>
-          
-          {[
-            { title: "Ecosystem", links: ["Intelligence", "Operations", "Finance", "Academic"] },
-            { title: "Resources", links: ["Documentation", "API Reference", "Architecture", "Community"] },
-            { title: "Company", links: ["Our Vision", "Careers", "Press Kit", "Contact"] },
-          ].map((group, index) => (
-            <div key={`footer-group-${index}`}>
-              <h4 className="text-xs font-black uppercase tracking-[0.3em] text-indigo-500 mb-8">{group.title}</h4>
-              <ul className="space-y-6">
-                {group.links.map((link) => (
-                  <li key={`footer-link-${link}`}><a href="#" className="text-slate-400 hover:text-white transition-colors font-bold">{link}</a></li>
-                ))}
-              </ul>
-            </div>
-          ))}
-        </div>
-        
-        <div className="max-w-7xl mx-auto px-6 mt-32 pt-12 border-t border-white/5 flex flex-col md:flex-row justify-between items-center gap-8">
-          <p className="text-slate-500 text-sm font-bold">
-            © {new Date().getFullYear()} PakEducate Pro Enterprise. All rights reserved.
-          </p>
-          <div className="flex items-center gap-8 text-slate-500 text-sm font-bold">
-            <a href="#" className="hover:text-white transition-colors">Privacy Protocol</a>
-            <a href="#" className="hover:text-white transition-colors">Service Terms</a>
-            <div className="flex items-center gap-2">
-              <Lock className="w-4 h-4" />
-              <span>AES-256 Encrypted</span>
-            </div>
-          </div>
-        </div>
-      </footer>
-
-      {/* Auth Modal */}
+    <>
+      <LandingPage onLogin={() => {
+        setAuthType("login");
+        setIsAuthModalOpen(true);
+      }} />
       <Dialog open={isAuthModalOpen} onOpenChange={setIsAuthModalOpen}>
         <DialogContent className="sm:max-w-[450px] p-0 overflow-hidden rounded-[2.5rem] border-none shadow-2xl">
           <AuthForm 
@@ -1175,7 +992,7 @@ export default function App() {
           />
         </DialogContent>
       </Dialog>
-    </div>
+    </>
   );
 }
 

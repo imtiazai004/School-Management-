@@ -1,5 +1,5 @@
 export interface Student {
-  id: number;
+  id: string;
   rollNo?: string;
   name: string;
   fatherName: string;
@@ -21,7 +21,7 @@ export interface Student {
 }
 
 export interface FeeRecord {
-  id: number;
+  id: string;
   student: string;
   rollNo?: string;
   grade: string;
@@ -29,4 +29,17 @@ export interface FeeRecord {
   date: string;
   status: "Paid" | "Unpaid";
   method: string;
+}
+
+export interface Teacher {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  subject: string;
+  qualification: string;
+  joiningDate: string;
+  salary: number;
+  status: "Active" | "On Leave" | "Resigned";
+  assignedClasses: string[];
 }

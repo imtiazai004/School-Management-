@@ -9,6 +9,7 @@ import {
   Users, 
   Search,
   Plus,
+  X,
   Filter,
   Download,
   MoreVertical,
@@ -73,17 +74,27 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
-import { Student, FeeRecord } from "../types";
+import { Student, FeeRecord, Teacher } from "../types";
+import { db, handleFirestoreError, OperationType } from "../lib/firebase";
+import { 
+  collection, 
+  addDoc, 
+  updateDoc, 
+  doc, 
+  deleteDoc, 
+  setDoc,
+  serverTimestamp 
+} from "firebase/firestore";
+
+import { getPredictiveAnalytics, generateSocialPost } from "../services/geminiService";
 
 // --- Classes Smart Management ---
 export const ClassesSmartManagement = ({ 
   userRole, 
-  students, 
-  setStudents 
+  students
 }: { 
   userRole?: string;
   students: Student[];
-  setStudents: React.Dispatch<React.SetStateAction<Student[]>>;
 }) => {
   const [activeTab, setActiveTab] = useState<"attendance" | "bulk" | "schedule">("attendance");
   const [isMarkingAttendance, setIsMarkingAttendance] = useState(false);
@@ -117,19 +128,18 @@ export const ClassesSmartManagement = ({
 
   const filteredStudents = students.filter(s => s.grade === selectedClass);
 
-  const [attendanceData, setAttendanceData] = useState(
+  const [attendanceData, setAttendanceData] = useState<Record<string, string>>(
     students.reduce((acc, student) => ({ ...acc, [student.id]: student.attendanceStatus || "present" }), {})
   );
 
-  const updateAttendance = (studentId: number, status: string) => {
+  const updateAttendance = (studentId: string, status: string) => {
     setAttendanceData(prev => ({ ...prev, [studentId]: status }));
   };
 
-  const handleAddStudent = () => {
+  const handleAddStudent = async () => {
     if (!newStudent.name || !newStudent.grade) return;
     
-    const studentToAdd: Student = {
-      id: Date.now(),
+    const studentToAdd = {
       name: newStudent.name,
       fatherName: newStudent.fatherName || "N/A",
       grade: newStudent.grade,
@@ -137,22 +147,39 @@ export const ClassesSmartManagement = ({
       attendanceStatus: "present",
       attendanceTime: "-",
       examResults: { math: 0, science: 0, english: 0 },
-      checkedByParent: false
+      checkedByParent: false,
+      admissionDate: new Date().toISOString().split('T')[0]
     };
     
-    setStudents([...students, studentToAdd]);
-    setAttendanceData(prev => ({ ...prev, [studentToAdd.id]: "present" }));
-    setNewStudent({ name: "", grade: "Grade 10-A", fatherName: "" });
-    setShowManualEntry(false);
+    try {
+      await addDoc(collection(db, "students"), studentToAdd);
+      setNewStudent({ name: "", grade: "Grade 10-A", fatherName: "" });
+      setShowManualEntry(false);
+    } catch (error) {
+      console.error("Error adding student:", error);
+    }
   };
 
-  const saveAttendance = () => {
-    setStudents(students.map(s => ({
-      ...s,
-      attendanceStatus: attendanceData[s.id] || s.attendanceStatus,
-      attendanceTime: attendanceData[s.id] === "present" ? new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "-"
-    })));
-    setIsMarkingAttendance(false);
+  const saveAttendance = async () => {
+    setIsSaving(true);
+    try {
+      const promises = students.map(s => {
+        const status = attendanceData[s.id] || s.attendanceStatus;
+        const time = status === "present" ? new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "-";
+        return updateDoc(doc(db, "students", s.id), {
+          attendanceStatus: status,
+          attendanceTime: time
+        });
+      });
+      await Promise.all(promises);
+      setIsMarkingAttendance(false);
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
+    } catch (error) {
+      console.error("Error saving attendance:", error);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const generatePDF = (customTitle?: string, customBody?: any[][], customHead?: string[][]) => {
@@ -209,8 +236,12 @@ export const ClassesSmartManagement = ({
     setShowReportModal(false);
   };
 
-  const markAsChecked = (id: number) => {
-    setStudents(students.map(s => s.id === id ? { ...s, checkedByParent: true } : s));
+  const markAsChecked = async (id: string) => {
+    try {
+      await updateDoc(doc(db, "students", id), { checkedByParent: true });
+    } catch (error) {
+      console.error("Error marking as checked:", error);
+    }
   };
 
   const handleBulkUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -259,17 +290,21 @@ export const ClassesSmartManagement = ({
       const extractedStudents = JSON.parse(response.text || "[]");
       
       if (Array.isArray(extractedStudents) && extractedStudents.length > 0) {
-        const newStudents = extractedStudents.map((s: any, index: number) => ({
-          id: Date.now() + index,
-          name: s.name,
-          grade: s.grade || "Grade 10-A",
-          status: "present",
-          time: "-",
-          examResults: { math: 0, science: 0, english: 0 },
-          checkedByParent: false
-        }));
-        setStudents(prev => [...prev, ...newStudents]);
-        alert(`Successfully imported ${newStudents.length} students!`);
+        const promises = extractedStudents.map((s: any) => {
+          const newStudentData = {
+            name: s.name,
+            grade: s.grade || "Grade 10-A",
+            status: "Active",
+            attendanceStatus: "present",
+            attendanceTime: "-",
+            examResults: { math: 0, science: 0, english: 0 },
+            checkedByParent: false,
+            admissionDate: new Date().toISOString().split('T')[0]
+          };
+          return addDoc(collection(db, "students"), newStudentData);
+        });
+        await Promise.all(promises);
+        alert(`Successfully imported ${extractedStudents.length} students!`);
       } else {
         alert("No students could be extracted from the document. Please try a clearer image.");
       }
@@ -861,14 +896,12 @@ export const FinanceManagement = ({
   userRole, 
   initialTab = "overview",
   students,
-  fees,
-  setFees
+  fees
 }: { 
   userRole?: string; 
   initialTab?: "overview" | "fees" | "salaries";
   students: Student[];
   fees: FeeRecord[];
-  setFees: React.Dispatch<React.SetStateAction<FeeRecord[]>>;
 }) => {
   const [activeTab, setActiveTab] = useState<"overview" | "fees" | "salaries">(initialTab);
   
@@ -879,7 +912,7 @@ export const FinanceManagement = ({
   const [feeTab, setFeeTab] = useState<"collection" | "structure" | "defaulters" | "tracking">("structure");
   const [salaryTab, setSalaryTab] = useState<"monthly" | "yearly" | "setup">("monthly");
   const [showCollectFeeModal, setShowCollectFeeModal] = useState(false);
-  const [newFee, setNewFee] = useState({ student: "", grade: "Grade 10-A", amount: "", method: "Cash" });
+  const [newFee, setNewFee] = useState({ student: "", rollNo: "", grade: "Grade 10-A", amount: "", method: "Cash" });
   const [selectedGrade, setSelectedGrade] = useState("Grade 10-A");
   const [isUploading, setIsUploading] = useState(false);
   const [trackingSearch, setTrackingSearch] = useState("");
@@ -904,21 +937,28 @@ export const FinanceManagement = ({
     document.body.removeChild(link);
   };
 
-  const handleUploadRecords = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleUploadRecords = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
     setIsUploading(true);
-    // Simulate parsing delay
-    setTimeout(() => {
+    try {
+      // In a real app, you'd parse the CSV here.
+      // For this demo, we'll add two mock entries to Firestore.
       const newEntries = [
-        { id: fees.length + 1, student: "Bulk Student 1", grade: "Grade 10-A", amount: 15000, date: new Date().toISOString().split('T')[0], status: "Paid" as const, method: "Bulk Upload" },
-        { id: fees.length + 2, student: "Bulk Student 2", grade: "Grade 11-B", amount: 18000, date: new Date().toISOString().split('T')[0], status: "Paid" as const, method: "Bulk Upload" },
+        { student: "Bulk Student 1", grade: "Grade 10-A", amount: 15000, date: new Date().toISOString().split('T')[0], status: "Paid" as const, method: "Bulk Upload" },
+        { student: "Bulk Student 2", grade: "Grade 11-B", amount: 18000, date: new Date().toISOString().split('T')[0], status: "Paid" as const, method: "Bulk Upload" },
       ];
-      setFees([...newEntries, ...fees]);
-      setIsUploading(false);
+      
+      const promises = newEntries.map(entry => addDoc(collection(db, "fees"), entry));
+      await Promise.all(promises);
+      
       if (fileInputRef.current) fileInputRef.current.value = "";
-    }, 1500);
+    } catch (error) {
+      console.error("Error uploading fee records:", error);
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   // Mock Data for Salaries
@@ -944,20 +984,25 @@ export const FinanceManagement = ({
     { name: 'Jun', revenue: 2390, expenses: 3800 },
   ];
 
-  const handleCollectFee = () => {
+  const handleCollectFee = async () => {
     if (!newFee.student || !newFee.amount) return;
     const fee = {
-      id: fees.length + 1,
       student: newFee.student,
+      rollNo: newFee.rollNo,
       grade: newFee.grade,
       amount: parseInt(newFee.amount),
       date: new Date().toISOString().split('T')[0],
       status: "Paid" as const,
       method: newFee.method
     };
-    setFees([fee, ...fees]);
-    setShowCollectFeeModal(false);
-    setNewFee({ student: "", grade: "Grade 10-A", amount: "", method: "Cash" });
+    
+    try {
+      await addDoc(collection(db, "fees"), fee);
+      setShowCollectFeeModal(false);
+      setNewFee({ student: "", rollNo: "", grade: "Grade 10-A", amount: "", method: "Cash" });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, "fees");
+    }
   };
 
   const renderOverview = () => (
@@ -1416,15 +1461,27 @@ export const FinanceManagement = ({
             </DialogHeader>
           </div>
           <div className="p-8 space-y-6 bg-white">
-            <div className="space-y-2">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Student Name</label>
-              <input 
-                type="text"
-                value={newFee.student}
-                onChange={(e) => setNewFee({...newFee, student: e.target.value})}
-                placeholder="Enter full name"
-                className="w-full h-12 px-4 rounded-xl bg-slate-50 border border-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-bold"
-              />
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Student Name</label>
+                <input 
+                  type="text"
+                  value={newFee.student}
+                  onChange={(e) => setNewFee({...newFee, student: e.target.value})}
+                  placeholder="Enter full name"
+                  className="w-full h-12 px-4 rounded-xl bg-slate-50 border border-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-bold"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Roll No</label>
+                <input 
+                  type="text"
+                  value={newFee.rollNo}
+                  onChange={(e) => setNewFee({...newFee, rollNo: e.target.value})}
+                  placeholder="e.g. 10-A-123"
+                  className="w-full h-12 px-4 rounded-xl bg-slate-50 border border-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-bold"
+                />
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
@@ -1735,6 +1792,11 @@ export const AcademicAnalytics = ({
   userRole?: string;
   students: Student[];
 }) => {
+  const [aiInsights, setAiInsights] = useState<any>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [socialPost, setSocialPost] = useState<string>("");
+  const [isGeneratingPost, setIsGeneratingPost] = useState(false);
+
   const data = [
     { subject: 'Math', score: 85, average: 72 },
     { subject: 'Science', score: 92, average: 78 },
@@ -1744,6 +1806,21 @@ export const AcademicAnalytics = ({
     { subject: 'Arts', score: 82, average: 85 },
   ];
 
+  const handleGenerateAI = async () => {
+    if (students.length === 0) return;
+    setIsGenerating(true);
+    const insights = await getPredictiveAnalytics(students[0]);
+    setAiInsights(insights);
+    setIsGenerating(false);
+  };
+
+  const handleGeneratePost = async () => {
+    setIsGeneratingPost(true);
+    const post = await generateSocialPost("Our students achieved a 95% success rate in the recent Science Olympiad!");
+    setSocialPost(post);
+    setIsGeneratingPost(false);
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -1751,29 +1828,124 @@ export const AcademicAnalytics = ({
           <h2 className="text-3xl font-black tracking-tight text-slate-900">Academic Analytics</h2>
           <p className="text-slate-500 font-medium">Performance benchmarking and growth tracking</p>
         </div>
+        <div className="flex gap-3">
+          <Button 
+            onClick={handleGeneratePost}
+            disabled={isGeneratingPost}
+            className="bg-indigo-50 text-indigo-600 hover:bg-indigo-100 rounded-xl font-bold gap-2"
+          >
+            {isGeneratingPost ? <Loader2 className="w-4 h-4 animate-spin" /> : <Users className="w-4 h-4" />}
+            Generate Social Post
+          </Button>
+          <Button 
+            onClick={handleGenerateAI}
+            disabled={isGenerating || students.length === 0}
+            className="bg-indigo-600 hover:bg-indigo-700 rounded-xl font-bold gap-2 shadow-lg shadow-indigo-100"
+          >
+            {isGenerating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
+            Generate AI Insights
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card className="lg:col-span-2 rounded-[2rem] border-slate-200/60 shadow-sm p-8">
-          <CardHeader className="px-0 pt-0">
-            <CardTitle className="text-xl font-black tracking-tight">Subject Performance Index</CardTitle>
-          </CardHeader>
-          <div className="h-96 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={data}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis dataKey="subject" axisLine={false} tickLine={false} tick={{fontSize: 12, fontWeight: 600, fill: '#94a3b8'}} />
-                <YAxis axisLine={false} tickLine={false} tick={{fontSize: 12, fontWeight: 600, fill: '#94a3b8'}} />
-                <Tooltip 
-                  cursor={{fill: '#f8fafc'}}
-                  contentStyle={{ borderRadius: '1rem', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
-                />
-                <Bar dataKey="score" fill="#4f46e5" radius={[6, 6, 0, 0]} barSize={40} name="Current Score" />
-                <Bar dataKey="average" fill="#e2e8f0" radius={[6, 6, 0, 0]} barSize={40} name="Class Average" />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </Card>
+        <div className="lg:col-span-2 space-y-6">
+          <Card className="rounded-[2rem] border-slate-200/60 shadow-sm p-8 bg-white">
+            <CardHeader className="px-0 pt-0">
+              <CardTitle className="text-xl font-black tracking-tight">Subject Performance Index</CardTitle>
+            </CardHeader>
+            <div className="h-96 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={data}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                  <XAxis dataKey="subject" axisLine={false} tickLine={false} tick={{fontSize: 12, fontWeight: 600, fill: '#94a3b8'}} />
+                  <YAxis axisLine={false} tickLine={false} tick={{fontSize: 12, fontWeight: 600, fill: '#94a3b8'}} />
+                  <Tooltip 
+                    cursor={{fill: '#f8fafc'}}
+                    contentStyle={{ borderRadius: '1rem', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                  />
+                  <Bar dataKey="score" fill="#4f46e5" radius={[6, 6, 0, 0]} barSize={40} name="Current Score" />
+                  <Bar dataKey="average" fill="#e2e8f0" radius={[6, 6, 0, 0]} barSize={40} name="Class Average" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </Card>
+
+          {aiInsights && (
+            <Card className="rounded-[2rem] border-indigo-100 shadow-xl p-8 bg-indigo-50/30 border-2 animate-in slide-in-from-bottom-4 duration-500">
+              <div className="flex items-center gap-4 mb-6">
+                <div className="w-12 h-12 bg-indigo-600 rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-200">
+                  <Zap className="text-white w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-black text-slate-900">Gemini Predictive Insights</h3>
+                  <p className="text-indigo-600 font-bold text-sm">AI-Generated for {students[0].name}</p>
+                </div>
+              </div>
+              
+              <div className="grid md:grid-cols-2 gap-8">
+                <div className="space-y-6">
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-widest text-slate-400 mb-2">Performance Trend</p>
+                    <Badge className={`rounded-lg px-3 py-1 font-black ${
+                      aiInsights.performanceTrend === 'Improving' ? 'bg-emerald-100 text-emerald-700' : 
+                      aiInsights.performanceTrend === 'At Risk' ? 'bg-rose-100 text-rose-700' : 'bg-blue-100 text-blue-700'
+                    }`}>
+                      {aiInsights.performanceTrend}
+                    </Badge>
+                  </div>
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-widest text-slate-400 mb-2">Focus Areas</p>
+                    <div className="flex flex-wrap gap-2">
+                      {aiInsights.subjectsNeedingAttention?.map((s: string) => (
+                        <Badge key={s} variant="outline" className="rounded-lg border-indigo-200 text-indigo-700 bg-white font-bold">{s}</Badge>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                <div className="space-y-6">
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-widest text-slate-400 mb-2">Recommendations</p>
+                    <ul className="space-y-2">
+                      {aiInsights.recommendations?.map((r: string, i: number) => (
+                        <li key={i} className="text-sm font-medium text-slate-600 flex gap-2">
+                          <CheckCircle2 className="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
+                          {r}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              </div>
+              <div className="mt-8 pt-6 border-t border-indigo-100">
+                <p className="text-sm italic text-indigo-700 font-medium">"{aiInsights.motivationalMessage}"</p>
+              </div>
+            </Card>
+          )}
+
+          {socialPost && (
+            <Card className="rounded-[2rem] border-slate-200 shadow-sm p-8 bg-white animate-in slide-in-from-bottom-4 duration-500">
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-200">
+                    <Users className="text-white w-6 h-6" />
+                  </div>
+                  <h3 className="text-xl font-black text-slate-900">Automated Social Post</h3>
+                </div>
+                <Button variant="ghost" size="sm" className="text-slate-400" onClick={() => setSocialPost("")}>
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
+              <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100">
+                <p className="text-slate-700 whitespace-pre-wrap font-medium">{socialPost}</p>
+              </div>
+              <div className="mt-6 flex justify-end gap-3">
+                <Button variant="outline" className="rounded-xl font-bold border-slate-200">Copy Text</Button>
+                <Button className="bg-blue-600 hover:bg-blue-700 rounded-xl font-bold">Post to Facebook</Button>
+              </div>
+            </Card>
+          )}
+        </div>
 
         <div className="space-y-6">
           <Card className="rounded-[2rem] border-slate-200/60 shadow-sm p-6 bg-indigo-600 text-white">
@@ -1805,7 +1977,7 @@ export const AcademicAnalytics = ({
             )}
           </Card>
 
-          <Card className="rounded-[2rem] border-slate-200/60 shadow-sm p-6">
+          <Card className="rounded-[2rem] border-slate-200/60 shadow-sm p-6 bg-white">
             <h4 className="text-xs font-black uppercase tracking-widest text-slate-400 mb-4">Growth Insights</h4>
             <div className="space-y-4">
               <div className="flex items-start gap-3">
@@ -1829,21 +2001,23 @@ export const AcademicAnalytics = ({
 };
 
 // --- Guardian Engagement Hub ---
-export const GuardianEngagementHub = ({ userRole }: { userRole?: string }) => {
+export const GuardianEngagementHub = ({ 
+  userRole,
+  students
+}: { 
+  userRole?: string;
+  students: Student[];
+}) => {
   const [selectedClass, setSelectedClass] = useState("Grade 10-A");
-  const [students, setStudents] = useState([
-    { id: 1, name: "Ahmad Hassan", grade: "Grade 10-A", examResults: { math: 85, science: 92, english: 78 }, checkedByParent: false },
-    { id: 2, name: "Sara Khan", grade: "Grade 10-A", examResults: { math: 72, science: 68, english: 85 }, checkedByParent: true },
-    { id: 3, name: "Zainab Ali", grade: "Grade 10-A", examResults: { math: 95, science: 88, english: 92 }, checkedByParent: false },
-    { id: 4, name: "Bilal Ahmed", grade: "Grade 10-A", examResults: { math: 65, science: 70, english: 60 }, checkedByParent: false },
-    { id: 5, name: "Fatima Noor", grade: "Grade 10-A", examResults: { math: 88, science: 85, english: 80 }, checkedByParent: true },
-    { id: 6, name: "John Doe", grade: "Grade 10-B", examResults: { math: 80, science: 75, english: 70 }, checkedByParent: false },
-  ]);
 
   const filteredStudents = students.filter(s => s.grade === selectedClass);
 
-  const markAsChecked = (id: number) => {
-    setStudents(students.map(s => s.id === id ? { ...s, checkedByParent: true } : s));
+  const markAsChecked = async (id: string) => {
+    try {
+      await updateDoc(doc(db, "students", id), { checkedByParent: true });
+    } catch (error) {
+      console.error("Error marking as checked:", error);
+    }
   };
 
   const generatePDF = (customTitle: string, customBody: any[][], customHead: string[][]) => {
@@ -1940,7 +2114,13 @@ export const GuardianEngagementHub = ({ userRole }: { userRole?: string }) => {
                 </Button>
                 {!student.checkedByParent && (
                   <Button 
-                    onClick={() => markAsChecked(student.id)}
+                    onClick={async () => {
+                      try {
+                        await updateDoc(doc(db, "students", student.id), { checkedByParent: true });
+                      } catch (error) {
+                        console.error("Error marking as checked:", error);
+                      }
+                    }}
                     className="bg-indigo-600 hover:bg-indigo-700 rounded-xl font-black gap-2 h-12 shadow-lg shadow-indigo-100"
                   >
                     <CheckCircle2 className="w-4 h-4" /> Mark Checked
@@ -1965,13 +2145,11 @@ export const GuardianEngagementHub = ({ userRole }: { userRole?: string }) => {
 export const StudentManagementPortal = ({ 
   userRole, 
   userEmail,
-  students,
-  setStudents
+  students
 }: { 
   userRole?: string; 
   userEmail?: string;
   students: Student[];
-  setStudents: React.Dispatch<React.SetStateAction<Student[]>>;
 }) => {
   const [activeTab, setActiveTab] = useState<"directory" | "admission" | "promotion" | "withdrawal">("directory");
   const [searchQuery, setSearchQuery] = useState("");
@@ -2072,27 +2250,29 @@ export const StudentManagementPortal = ({
     return matchesClass && matchesSearch;
   });
 
-  const handleAdmission = (e: React.FormEvent) => {
+  const handleAdmission = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
-    setTimeout(() => {
-      const newStudentEntry: Student = {
-        id: Date.now(),
-        rollNo: `${admissionData.grade.split(' ')[1]}-${Math.floor(100 + Math.random() * 900)}`,
-        name: admissionData.name,
-        fatherName: admissionData.fatherName,
-        grade: admissionData.grade,
-        dob: admissionData.dob,
-        gender: admissionData.gender,
-        contact: admissionData.contact,
-        address: admissionData.address,
-        status: "Active",
-        admissionDate: new Date().toISOString().split('T')[0],
-        examResults: { math: 0, science: 0, english: 0 },
-        attendanceStatus: "present",
-        attendanceTime: "-"
-      };
-      setStudents([...students, newStudentEntry]);
+    
+    const newStudentEntry = {
+      rollNo: `${admissionData.grade.split(' ')[1]}-${Math.floor(100 + Math.random() * 900)}`,
+      name: admissionData.name,
+      fatherName: admissionData.fatherName,
+      grade: admissionData.grade,
+      dob: admissionData.dob,
+      gender: admissionData.gender,
+      contact: admissionData.contact,
+      address: admissionData.address,
+      status: "Active",
+      admissionDate: new Date().toISOString().split('T')[0],
+      examResults: { math: 0, science: 0, english: 0 },
+      attendanceStatus: "present",
+      attendanceTime: "-",
+      checkedByParent: false
+    };
+
+    try {
+      await addDoc(collection(db, "students"), newStudentEntry);
       setIsSubmitting(false);
       setShowSuccess(true);
       setAdmissionData({
@@ -2108,7 +2288,10 @@ export const StudentManagementPortal = ({
         previousSchool: ""
       });
       setTimeout(() => setShowSuccess(false), 3000);
-    }, 1500);
+    } catch (error) {
+      setIsSubmitting(false);
+      handleFirestoreError(error, OperationType.WRITE, "students");
+    }
   };
 
   const renderDirectory = () => (
@@ -2661,10 +2844,23 @@ export const StudentManagementPortal = ({
                         </div>
                         <Button 
                           disabled={isWithdrawing}
-                          onClick={() => {
+                          onClick={async () => {
                             setIsWithdrawing(true);
-                            setTimeout(() => {
+                            try {
                               if (selectedStudent) {
+                                // Archive the student (optional, but good practice)
+                                await addDoc(collection(db, "withdrawn_students"), {
+                                  studentId: selectedStudent.id,
+                                  name: selectedStudent.name,
+                                  grade: selectedStudent.grade,
+                                  reason: withdrawalReason,
+                                  date: withdrawalDate,
+                                  archivedAt: serverTimestamp()
+                                });
+                                
+                                // Delete from active students
+                                await deleteDoc(doc(db, "students", selectedStudent.id));
+                                
                                 setWithdrawnStudents([
                                   {
                                     id: selectedStudent.id,
@@ -2675,11 +2871,13 @@ export const StudentManagementPortal = ({
                                   },
                                   ...withdrawnStudents
                                 ]);
-                                setStudents(students.filter(s => s.id !== selectedStudent.id));
                               }
                               setIsWithdrawing(false);
                               setWithdrawalStep("success");
-                            }, 2000);
+                            } catch (error) {
+                              console.error("Error during withdrawal:", error);
+                              setIsWithdrawing(false);
+                            }
                           }}
                           className="w-full h-16 rounded-2xl bg-rose-600 hover:bg-rose-700 font-black text-lg shadow-xl shadow-rose-100 gap-3"
                         >
@@ -2971,62 +3169,17 @@ export const StudentManagementPortal = ({
 };
 
 // --- Teacher Management Portal ---
-export const TeacherManagementPortal = ({ userRole }: { userRole?: string }) => {
+export const TeacherManagementPortal = ({ 
+  userRole,
+  teachers
+}: { 
+  userRole?: string;
+  teachers: Teacher[];
+}) => {
   const [activeTab, setActiveTab] = useState<"list" | "add" | "classes">("list");
   const [searchQuery, setSearchQuery] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
-
-  const [teachers, setTeachers] = useState([
-    { 
-      id: 1, 
-      name: "Prof. Salman Ahmed", 
-      email: "salman.ahmed@smartedu.com", 
-      phone: "+92 300 1234567",
-      subject: "Mathematics", 
-      qualification: "M.Sc Mathematics",
-      joiningDate: "2020-08-15",
-      salary: 75000,
-      status: "Active",
-      assignedClasses: ["Grade 10-A", "Grade 9-B"]
-    },
-    { 
-      id: 2, 
-      name: "Ms. Ayesha Khan", 
-      email: "ayesha.khan@smartedu.com", 
-      phone: "+92 301 7654321",
-      subject: "Physics", 
-      qualification: "M.Phil Physics",
-      joiningDate: "2021-03-10",
-      salary: 68000,
-      status: "Active",
-      assignedClasses: ["Grade 11-A", "Grade 10-B"]
-    },
-    { 
-      id: 3, 
-      name: "Mr. Bilal Raza", 
-      email: "bilal.raza@smartedu.com", 
-      phone: "+92 321 9876543",
-      subject: "Computer Science", 
-      qualification: "BS Computer Science",
-      joiningDate: "2022-01-05",
-      salary: 62000,
-      status: "On Leave",
-      assignedClasses: ["Grade 9-A", "Grade 8-B"]
-    },
-    { 
-      id: 4, 
-      name: "Dr. Fatima Zahra", 
-      email: "fatima.zahra@smartedu.com", 
-      phone: "+92 333 4567890",
-      subject: "Chemistry", 
-      qualification: "Ph.D Chemistry",
-      joiningDate: "2019-11-20",
-      salary: 95000,
-      status: "Active",
-      assignedClasses: ["Grade 12-A", "Grade 11-B"]
-    }
-  ]);
 
   const [newTeacher, setNewTeacher] = useState({
     name: "",
@@ -3038,17 +3191,16 @@ export const TeacherManagementPortal = ({ userRole }: { userRole?: string }) => 
     salary: 0,
   });
 
-  const handleAddTeacher = () => {
+  const handleAddTeacher = async () => {
     if (!newTeacher.name || !newTeacher.email) return;
     setIsSaving(true);
-    setTimeout(() => {
+    try {
       const teacherToAdd = {
-        id: Date.now(),
         ...newTeacher,
         status: "Active",
         assignedClasses: []
       };
-      setTeachers([...teachers, teacherToAdd]);
+      await addDoc(collection(db, "teachers"), teacherToAdd);
       setNewTeacher({
         name: "",
         email: "",
@@ -3058,21 +3210,32 @@ export const TeacherManagementPortal = ({ userRole }: { userRole?: string }) => 
         joiningDate: new Date().toISOString().split('T')[0],
         salary: 0,
       });
-      setIsSaving(false);
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
       setActiveTab("list");
-    }, 1000);
-  };
-
-  const removeTeacher = (id: number) => {
-    if (confirm("Are you sure you want to remove this teacher from the system?")) {
-      setTeachers(teachers.filter(t => t.id !== id));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, "teachers");
+    } finally {
+      setIsSaving(false);
     }
   };
 
-  const updateTeacherClasses = (id: number, classes: string[]) => {
-    setTeachers(teachers.map(t => t.id === id ? { ...t, assignedClasses: classes } : t));
+  const removeTeacher = async (id: string) => {
+    if (confirm("Are you sure you want to remove this teacher from the system?")) {
+      try {
+        await deleteDoc(doc(db, "teachers", id));
+      } catch (error) {
+        console.error("Error removing teacher:", error);
+      }
+    }
+  };
+
+  const updateTeacherClasses = async (id: string, classes: string[]) => {
+    try {
+      await updateDoc(doc(db, "teachers", id), { assignedClasses: classes });
+    } catch (error) {
+      console.error("Error updating teacher classes:", error);
+    }
   };
 
   const filteredTeachers = teachers.filter(t => 
@@ -3413,13 +3576,11 @@ export const TeacherManagementPortal = ({ userRole }: { userRole?: string }) => 
 
 // --- Examination & Assessment Center ---
 export const ExaminationAssessmentCenter = ({ 
-  userRole,
-  students,
-  setStudents
+  userRole, 
+  students
 }: { 
   userRole?: string;
   students: Student[];
-  setStudents: React.Dispatch<React.SetStateAction<Student[]>>;
 }) => {
   const [examSubTab, setExamSubTab] = useState<"enter" | "view">("view");
   const [selectedTerm, setSelectedTerm] = useState("First Term");
@@ -3453,6 +3614,16 @@ export const ExaminationAssessmentCenter = ({
 
     doc.save(`${customTitle || "Report"}_${date}.pdf`);
   };
+
+  const [localResults, setLocalResults] = useState<Record<string, { math: number, science: number, english: number }>>({});
+
+  useEffect(() => {
+    const results: Record<string, { math: number, science: number, english: number }> = {};
+    students.forEach(s => {
+      results[s.id] = { ...s.examResults };
+    });
+    setLocalResults(results);
+  }, [students]);
 
   const handleExamBulkUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -3494,21 +3665,20 @@ export const ExaminationAssessmentCenter = ({
         const jsonMatch = text.match(/\[.*\]/s);
         if (jsonMatch) {
           const extractedData = JSON.parse(jsonMatch[0]);
-          const updatedStudents = students.map(student => {
+          const promises = students.map(student => {
             const extracted = extractedData.find((d: any) => d.rollNo === student.id || d.name.toLowerCase() === student.name.toLowerCase());
             if (extracted) {
-              return {
-                ...student,
+              return updateDoc(doc(db, "students", student.id), {
                 examResults: {
                   math: extracted.math || student.examResults.math,
                   science: extracted.science || student.examResults.science,
                   english: extracted.english || student.examResults.english
                 }
-              };
+              });
             }
-            return student;
+            return Promise.resolve();
           });
-          setStudents(updatedStudents);
+          await Promise.all(promises);
         }
         setIsProcessingExamBulk(false);
       };
@@ -3518,13 +3688,22 @@ export const ExaminationAssessmentCenter = ({
     }
   };
 
-  const saveExamResults = () => {
+  const saveExamResults = async () => {
     setIsSaving(true);
-    setTimeout(() => {
-      setIsSaving(false);
+    try {
+      const promises = Object.entries(localResults).map(([id, results]) => {
+        return updateDoc(doc(db, "students", id), {
+          examResults: results
+        });
+      });
+      await Promise.all(promises);
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
-    }, 1500);
+    } catch (error) {
+      console.error("Error saving exam results:", error);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const startManualEntry = () => {
@@ -3762,10 +3941,13 @@ export const ExaminationAssessmentCenter = ({
                       <td className="px-8 py-4">
                         <input 
                           type="number" 
-                          value={student.examResults.math}
+                          value={localResults[student.id]?.math || 0}
                           onChange={(e) => {
                             const val = parseInt(e.target.value) || 0;
-                            setStudents(students.map(s => s.id === student.id ? { ...s, examResults: { ...s.examResults, math: val } } : s));
+                            setLocalResults(prev => ({
+                              ...prev,
+                              [student.id]: { ...prev[student.id], math: val }
+                            }));
                           }}
                           className="w-20 h-10 mx-auto block text-center rounded-lg border border-slate-200 focus:ring-2 focus:ring-indigo-500 font-bold"
                         />
@@ -3773,10 +3955,13 @@ export const ExaminationAssessmentCenter = ({
                       <td className="px-8 py-4">
                         <input 
                           type="number" 
-                          value={student.examResults.science}
+                          value={localResults[student.id]?.science || 0}
                           onChange={(e) => {
                             const val = parseInt(e.target.value) || 0;
-                            setStudents(students.map(s => s.id === student.id ? { ...s, examResults: { ...s.examResults, science: val } } : s));
+                            setLocalResults(prev => ({
+                              ...prev,
+                              [student.id]: { ...prev[student.id], science: val }
+                            }));
                           }}
                           className="w-20 h-10 mx-auto block text-center rounded-lg border border-slate-200 focus:ring-2 focus:ring-indigo-500 font-bold"
                         />
@@ -3784,10 +3969,13 @@ export const ExaminationAssessmentCenter = ({
                       <td className="px-8 py-4">
                         <input 
                           type="number" 
-                          value={student.examResults.english}
+                          value={localResults[student.id]?.english || 0}
                           onChange={(e) => {
                             const val = parseInt(e.target.value) || 0;
-                            setStudents(students.map(s => s.id === student.id ? { ...s, examResults: { ...s.examResults, english: val } } : s));
+                            setLocalResults(prev => ({
+                              ...prev,
+                              [student.id]: { ...prev[student.id], english: val }
+                            }));
                           }}
                           className="w-20 h-10 mx-auto block text-center rounded-lg border border-slate-200 focus:ring-2 focus:ring-indigo-500 font-bold"
                         />
