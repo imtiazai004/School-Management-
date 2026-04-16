@@ -266,6 +266,7 @@ export default function App() {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authType, setAuthType] = useState<"login" | "signup">("login");
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [isDemo, setIsDemo] = useState(false);
   const [demoExpiration, setDemoExpiration] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<UserRole>("Head of Institute");
@@ -295,6 +296,7 @@ export default function App() {
 
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
+        setIsLoading(true);
         setIsDemo(false);
         setIsLoggedIn(true);
         setUserEmail(user.email);
@@ -321,7 +323,7 @@ export default function App() {
               uid: user.uid,
               email: user.email,
               role: role,
-              profile: profile
+              profile: profile || getMockProfile(role, user.email)
             });
           }
         } catch (error) {
@@ -332,10 +334,16 @@ export default function App() {
             setUserProfile(getMockProfile("Head of Institute", user.email));
           }
         }
+        setIsLoading(false);
       } else {
-        setIsLoggedIn(false);
-        setUserEmail(null);
-        setUserProfile(null);
+        // Only set logged out if not in demo mode
+        const storedDemoExp = localStorage.getItem("demo_expiration");
+        if (!storedDemoExp || new Date(storedDemoExp) <= new Date()) {
+          setIsLoggedIn(false);
+          setUserEmail(null);
+          setUserProfile(null);
+        }
+        setIsLoading(false);
       }
     });
     return () => unsubscribe();
@@ -507,7 +515,7 @@ export default function App() {
           uid: user.uid,
           email: user.email,
           role: role,
-          profile: profile,
+          profile: profile || getMockProfile(role, user.email),
           lastLogin: new Date().toISOString()
         }, { merge: true });
       } catch (error) {
@@ -558,6 +566,19 @@ export default function App() {
         return <ModulePlaceholder title={activeModule || "Module"} />;
     }
   };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-16 h-16 bg-indigo-600 rounded-2xl flex items-center justify-center shadow-2xl shadow-indigo-200 animate-bounce">
+            <Zap className="text-white w-8 h-8" />
+          </div>
+          <p className="text-sm font-black text-slate-400 uppercase tracking-[0.3em] animate-pulse">Initializing System...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (isLoggedIn) {
     return (
@@ -1048,7 +1069,7 @@ export default function App() {
                             <label className="text-xs font-black text-slate-400 uppercase tracking-widest">Full Name</label>
                             <input 
                               type="text" 
-                              defaultValue={userEmail.split('@')[0].replace('.', ' ')}
+                              defaultValue={(userEmail?.split('@')[0] || "").replace('.', ' ')}
                               className="w-full h-12 px-4 rounded-xl bg-slate-50 border border-slate-100 font-bold text-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none"
                             />
                           </div>

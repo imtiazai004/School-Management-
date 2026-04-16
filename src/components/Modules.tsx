@@ -2573,7 +2573,7 @@ export const StudentManagementPortal = ({
     setIsSubmitting(true);
     
     const newStudentEntry = {
-      rollNo: `${admissionData.grade.split(' ')[1]}-${Math.floor(100 + Math.random() * 900)}`,
+      rollNo: `${(admissionData.grade || "").split(' ')[1] || "000"}-${Math.floor(100 + Math.random() * 900)}`,
       name: admissionData.name,
       fatherName: admissionData.fatherName,
       grade: admissionData.grade,
@@ -2684,7 +2684,7 @@ export const StudentManagementPortal = ({
                         <Phone className="w-3 h-3" /> {student.contact}
                       </div>
                       <div className="flex items-center gap-2 text-[10px] font-medium text-slate-400">
-                        <MapPin className="w-3 h-3" /> {student.address.split(',')[0]}
+                        <MapPin className="w-3 h-3" /> {(student.address || "").split(',')[0] || "No Address"}
                       </div>
                     </div>
                   </td>
@@ -3713,7 +3713,7 @@ export const TeacherManagementPortal = ({
                   <div className="flex -space-x-2">
                     {teacher.assignedClasses.map((cls, idx) => (
                       <div key={idx} className="w-8 h-8 rounded-full bg-slate-100 border-2 border-white flex items-center justify-center text-[10px] font-black text-slate-600" title={cls}>
-                        {cls.split(' ')[1]}
+                        {(cls || "").split(' ')[1] || cls}
                       </div>
                     ))}
                     {teacher.assignedClasses.length === 0 && <span className="text-xs font-bold text-slate-300 italic">None</span>}

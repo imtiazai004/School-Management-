@@ -82,7 +82,7 @@ export const UnifiedDashboard: React.FC<UnifiedDashboardProps> = ({
         {/* Welcome Section */}
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-3xl font-black text-slate-900 tracking-tighter">Welcome back, {profile?.name?.split(' ')[0]}!</h2>
+            <h2 className="text-3xl font-black text-slate-900 tracking-tighter">Welcome back, {(profile?.name || "User").split(' ')[0]}!</h2>
             <p className="text-slate-500 font-medium">Here's what's happening in your school today.</p>
           </div>
           <div className="hidden sm:flex items-center gap-3 bg-white p-2 rounded-2xl border border-slate-100 shadow-sm">
@@ -127,7 +127,7 @@ export const UnifiedDashboard: React.FC<UnifiedDashboardProps> = ({
               <div className="bg-white rounded-[2.5rem] border border-slate-200 shadow-sm p-8">
                 <div className="flex items-center justify-between mb-8">
                   <h3 className="text-xl font-black text-slate-900 flex items-center gap-3">
-                    <Clock className="w-5 h-5 text-indigo-600" /> Class Schedule (Grade {profile.grade})
+                    <Clock className="w-5 h-5 text-indigo-600" /> Class Schedule (Grade {profile?.grade || "N/A"})
                   </h3>
                   <button className="text-xs font-bold text-indigo-600 hover:underline">Full Schedule</button>
                 </div>
@@ -190,7 +190,7 @@ export const UnifiedDashboard: React.FC<UnifiedDashboardProps> = ({
                   <button className="text-xs font-bold text-indigo-600 hover:underline">Add Child</button>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {profile.linkedChildren?.map((child: any) => (
+                  {profile?.linkedChildren?.map((child: any) => (
                     <div key={child.id} className="p-6 rounded-[2rem] bg-slate-50 border border-slate-100 hover:shadow-lg transition-all">
                       <div className="flex items-center gap-4 mb-6">
                         <div className="w-16 h-16 rounded-2xl bg-white flex items-center justify-center shadow-sm">
